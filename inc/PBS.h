@@ -1,6 +1,6 @@
 #pragma once
-
 #include "CBS.h"
+
 
 unordered_set<int> reachable_set(int source, vector<vector<int>> adj_list);
 
@@ -28,7 +28,9 @@ private:
   void printPaths() const;
   void printResults() const;
   bool ddmapd_instance;
-  
+
+  int minimumCompletionTime(int num_tasks, vector<map<int, int>>& priority, vector<int>& earliest_start_time)
+
   vector<vector<int>> temporal_adj_list, temporal_adj_list_r;
 
   void join_paths();
