@@ -404,10 +404,11 @@ int ConstraintTable::getHoldingTime()
 	auto it = ct.find(goal_location);
 	if (it != ct.end())
 	{
-		for (auto time_range : it->second)
+		for (auto time_range : it->second) // loop over edge and vertex constraints
 			rst = max(rst, time_range.second);
 	}
-	for (auto landmark : landmarks)
+	// loop over the precedence constraints
+	for (auto landmark : landmarks) // landmarks : <timestep, location>; the agent must be at the given location at the given timestep
 	{
 		if (landmark.second != goal_location)
 			rst = max(rst, (int) landmark.first + 1);

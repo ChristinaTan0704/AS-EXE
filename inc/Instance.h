@@ -4,13 +4,26 @@
 
 typedef std::pair<int, int> event;
 
-// struct TemporalEdge{
-//   event source;
-//   event target;
+struct Segment{
+  int id;
+  int traj_start_timestep;
+  int traj_end_timestep;
+  int agent;
+  vector<int> dep_agent;
+  vector<int> dep_seqPos; // corresponding to dep_agent
+  vector<int> trajectory;
 
-//   TemporalEdge(event source, event target): source(source), target(target) {};
+  int traj_len;
+  Segment(int id, int traj_start_timestep, int traj_end_timestep, int agent, vector<int> dep_seqPos, vector<int> dep_agent, vector<int> trajectory):
+	id(id), traj_start_timestep(traj_start_timestep), traj_end_timestep(traj_end_timestep), agent(agent), dep_seqPos(dep_seqPos), dep_agent(dep_agent), trajectory(trajectory){
+		if (dep_agent.size() != dep_seqPos.size()) {
+			throw std::invalid_argument("dep_agent and dep_seqPos must have the same size");
+		}
+	traj_len = trajectory.size();
+	}
+  Segment(){}
+};
 
-// };
 
 // Currently only works for undirected unweighted 4-neighbor grids
 class Instance 
@@ -19,15 +32,21 @@ public:
 	int num_of_cols;
 	int num_of_rows;
 	int map_size;
-
+    int num_of_segments;
+	bool ddmapd_instance = false;
+	vector<vector<int>> goal_segmentIDs;
+	vector<Segment> segments;
+	vector<int> start_locations;
+	
 	// enum valid_moves_t { NORTH, EAST, SOUTH, WEST, WAIT_MOVE, MOVE_COUNT };  // MOVE_COUNT is the enum's size
 
 	Instance() {}
-	Instance(const string& map_fname, const string& agent_fname,
+	Instance(const string& map_fname, const string& agent_fname, const string& assignment_folder,
 			 int num_of_agents = 0, int num_of_rows = 0, int num_of_cols = 0, int num_of_obstacles = 0, int warehouse_width = 0);
 
 	void printAgents() const;
 
+	vector<Segment> getSegments(vector<int> id_list) const;
 	inline bool isObstacle(int loc) const { return my_map[loc]; }
 
 	inline bool validMove(int curr, int next) const;
@@ -69,7 +88,7 @@ public:
 	}
 
 	int getDefaultNumberOfAgents() const { return num_of_agents; }
-
+	bool AtOtherAgentParking(int loc, int agent) const { return agent_Parking[agent][loc]; }
   // should be moved to private
   // vector<TemporalEdge> temporal_cons;
   // temporal_cons[i * num_of_agents + j] = [{k, l}]
@@ -81,16 +100,20 @@ protected:
 	vector<bool> my_map;
 	string map_fname;
 	string agent_fname;
+	string assignment_folder;
 
 	int num_of_agents;
-	vector<int> start_locations;
 	vector<vector<int>> goal_locations;
+	vector<vector<bool>> agent_Parking;
+	
+
 
 
 	bool loadMap();
 	void printMap() const;
 	void saveMap() const;
 
+	bool loadAgentsJson();
 	virtual bool loadAgents();
 	virtual void saveAgents() const;
 

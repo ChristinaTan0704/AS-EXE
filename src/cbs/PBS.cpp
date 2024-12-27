@@ -1,10 +1,21 @@
 #include "PBS.h"
 #include "SpaceTimeAStar.h"
 #include <stack>
+#include <stdexcept>
+
+using namespace std;
+
 
 
 void PBS::printResults() const
 {
+
+  int makespan = 0;
+  for (int i = 0; i < num_of_agents; i++){
+    makespan = max(makespan, int(paths[i]->size() - 1));
+  }
+      
+
   if (solution_cost >= 0) // solved
     cout << "Solved,";
   else if (solution_cost == -1) // time_out
@@ -14,10 +25,11 @@ void PBS::printResults() const
   else if (solution_cost == -3) // nodes out
     cout << "Nodesout,";
 
-  cout << solution_cost << "," << runtime << "," <<
-    num_HL_expanded << "," << num_LL_expanded << "," << // HL_num_generated << "," << LL_num_generated << "," <<
-    min_f_val << "," << dummy_start->g_val << "," << dummy_start->g_val + dummy_start->h_val << "," <<
-    endl;
+  cout << " makespan : " << makespan << " ,cost : " << solution_cost << " ,runtime : " << runtime << " ,HL_expanded : " << num_HL_expanded << " ,LL_expanded : " << num_LL_expanded << " ,min_f_val : " << min_f_val << " ,dummy_start_g_val : " << dummy_start->g_val << " ,dummy_start_f_val : " << dummy_start->g_val + dummy_start->h_val << endl;
+  // cout << solution_cost << "," << runtime << "," <<
+  //   num_HL_expanded << "," << num_LL_expanded << "," << // HL_num_generated << "," << LL_num_generated << "," <<
+  //   min_f_val << "," << dummy_start->g_val << "," << dummy_start->g_val + dummy_start->h_val << "," <<
+  //   endl;
 }
 
 void PBS::printPaths() const
@@ -74,6 +86,7 @@ inline void PBS::updatePaths(CBSNode* curr)
 PBS::PBS(const Instance& instance, int screen):
 CBS(instance, false, heuristics_type::ZERO, screen)
 {
+  this->ddmapd_instance = instance.ddmapd_instance;
   this->screen = screen;
   this->focal_w = 1;
   this->num_of_agents = instance.getDefaultNumberOfAgents();
@@ -233,6 +246,7 @@ unordered_set<int> reachable_set(int source, vector<vector<int>> adj_list){
   return res;
 }
 
+
 void PBS::build_ct(ConstraintTable& ct, int task_id, vector<vector<int>> adj_list_r){
 
   int agent, task;
@@ -321,7 +335,6 @@ bool PBS::generateChild(CBSNode* node, CBSNode* parent){
   }
 
   vector<int> planning_order;
-
   bool has_cycle = !topological_sort(adj_list, planning_order);
   if (has_cycle){
     cout << "cycle in priority graph" << endl;
@@ -360,6 +373,8 @@ bool PBS::generateChild(CBSNode* node, CBSNode* parent){
         }
 
         cout << "plan for " << agent << "(" << task << ")"<< endl;
+      // TODO add the other agent's parking location to obstacles
+
         build_ct(ct, i, adj_list_r);
 
         bool reuse_old_path = false;
@@ -393,7 +408,11 @@ bool PBS::generateChild(CBSNode* node, CBSNode* parent){
           cout << "reuse old path" << endl;
           *paths[i] = *copy[i];
         }else{
-          *paths[i] = search_engines[agent]->findPathSegment(ct, start_time, task, 0);
+          if (ddmapd_instance){
+            *paths[i] = search_engines[agent]->findPathSegmentToPark(ct, start_time, task, 0);
+          } else {
+            *paths[i] = search_engines[agent]->findPathSegment(ct, start_time, task, 0);
+          }
         }
         if (paths[i]->empty())
           {
@@ -440,20 +459,33 @@ bool PBS::generateChild(CBSNode* node, CBSNode* parent){
       }
     }
 
-  node->g_val = 0;
-  for (int i = 0; i < num_of_agents; i++ ){
-    int g_i = search_engines[i]->heuristic_landmark[0];
-    for (int j = 0; j < search_engines[i]->goal_location.size(); j ++ ){
-      int task_id = task2id({i, j});
-      if (paths[task_id]->empty()) {
-        break;
+
+  if (pbs_heuristic == 1){
+    node->g_val = 0;
+    for (int i = 0; i < num_of_agents; i++ ){
+      int g_i = search_engines[i]->heuristic_landmark[0];
+      for (int j = 0; j < search_engines[i]->goal_location.size(); j ++ ){
+        // here will only use the last task's planned path + heuristic
+        int task_id = task2id({i, j});
+        if (paths[task_id]->empty()) {
+          break;
+        }
+        g_i = paths[task_id]->end_time();
+        if (j + 1 < search_engines[i]->goal_location.size()){
+          if (ddmapd_instance){
+            g_i = g_i + search_engines[i]->heuristic_landmark[j + 1] + search_engines[i]->segments[j].trajectory.size() - 1;
+          } else {
+            g_i += search_engines[i]->heuristic_landmark[j + 1];
+          }
+        }
       }
-      g_i = paths[task_id]->end_time();
-      if (j + 1 < search_engines[i]->goal_location.size()){
-        g_i += search_engines[i]->heuristic_landmark[j + 1];
-      }
+      node->g_val += g_i;
     }
-    node->g_val += g_i;
+  }
+  // TODO add an option to use the estimate makespan as g_val
+  else if (pbs_heuristic == 2 ){
+    
+    int debug = 1;
   }
   // compute g
 
@@ -515,8 +547,12 @@ bool PBS::generateRoot()
       cout << "plan for " << agent << "(" << task << ")"<< endl;
       ConstraintTable ct;
       build_ct(ct, i, adj_list_r);
-
-      paths_found_initially[i] = search_engines[agent]->findPathSegment(ct, start_time, task, 0);
+      
+      if (ddmapd_instance){
+        paths_found_initially[i] = search_engines[agent]->findPathSegmentToPark(ct, start_time, task, 0);
+      } else {
+        paths_found_initially[i] = search_engines[agent]->findPathSegment(ct, start_time, task, 0);
+      }
       if (paths_found_initially[i].empty())
         {
           cout << "No path exists for agent " << agent << "(" << task << ")" << endl;
@@ -738,11 +774,11 @@ bool PBS::solve(double time_limit, int cost_lowerbound, int cost_upperbound)
 	}
 
 	if (screen > 0){ // 1 or 2
-		printResults();
     if (solution_found){
       printPaths();
     }
   }
+  printResults();
 	return solution_found;
 }
 
@@ -781,4 +817,3 @@ PBS::~PBS(){
 	releaseNodes();
 	mdd_helper.clear();
 }
-

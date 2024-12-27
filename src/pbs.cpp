@@ -17,14 +17,15 @@ int main(int argc, char** argv)
 	po::options_description desc("Allowed options");
 	desc.add_options()
 		("help", "produce help message")
-
+		("pbs_heuristic", po::value<int>()->default_value(1), "(1) cost (2) makespan")
+		("assignment_folder,f", po::value<string>()->default_value(""), "path to folder that contains the assignment files")
 		// params for the input instance and experiment settings
-		("map,m", po::value<string>()->required(), "input file for map")
-		("agents,a", po::value<string>()->required(), "input file for agents")
+		("map,m", po::value<string>()->default_value(""), "input file for map")
+		("agents,a", po::value<string>()->default_value(""), "input file for agents")
 		("output,o", po::value<string>(), "output file for schedule")
 		("agentNum,k", po::value<int>()->default_value(0), "number of agents")
 		("cutoffTime,t", po::value<double>()->default_value(7200), "cutoff time (seconds)")
-		("screen,s", po::value<int>()->default_value(1), "screen option (0: none; 1: results; 2:all)")
+		("screen,s", po::value<int>()->default_value(2), "screen option (0: none; 1: results; 2:all)")
 		("seed,d", po::value<int>()->default_value(0), "random seed")
 		// params for instance generators
 		("rows", po::value<int>()->default_value(0), "number of rows")
@@ -57,7 +58,7 @@ int main(int argc, char** argv)
 
 	///////////////////////////////////////////////////////////////////////////
 	// load the instance
-	Instance instance(vm["map"].as<string>(), vm["agents"].as<string>(),
+	Instance instance(vm["map"].as<string>(), vm["agents"].as<string>(), vm["assignment_folder"].as<string>(),
 					  vm["agentNum"].as<int>(),
 					  vm["rows"].as<int>(), vm["cols"].as<int>(), vm["obs"].as<int>(), vm["warehouseWidth"].as<int>());
 
@@ -68,6 +69,7 @@ int main(int argc, char** argv)
 	//////////////////////////////////////////////////////////////////////
 	// initialize the solver
 	PBS pbs(instance, vm["screen"].as<int>());
+	pbs.set_heuristic(vm["pbs_heuristic"].as<int>());
 	//////////////////////////////////////////////////////////////////////
 	// run
 	double runtime = 0;

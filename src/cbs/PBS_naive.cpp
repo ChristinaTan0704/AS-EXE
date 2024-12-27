@@ -364,7 +364,6 @@ bool PBS_naive::generateChild(CBSNode* node, CBSNode* parent){
           cout << "reuse old path" << endl;
           *paths[i] = *copy[i];
         }else{
-          // *paths[i] = search_engines[agent]->findPathSegment(ct, start_time, task, 0);
           int lower_bound = (int) copy[i]->size() - 1;
           *paths[i] = search_engines[i] ->findPath(*node, ct, paths, i, lower_bound);
           excluded_agents.push_back(i);

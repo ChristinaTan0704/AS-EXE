@@ -8,6 +8,7 @@ class LLNode // low-level node
 public:
 	int location;
   unsigned int stage;
+  unsigned int segment_stage;
   unsigned int dist_to_next=0;
   vector<int> timestamps;
   vector<int> secondary_keys;
@@ -149,14 +150,20 @@ public:
 	double runtime_build_CT = 0; // runtime of building constraint table
 	double runtime_build_CAT = 0; // runtime of building conflict avoidance table
 
+	bool ddmapd_path_planning = false;
+	int agent_idx; 
 	int start_location;
 	vector<int> goal_location;
-  vector<int> heuristic_landmark;
+  	vector<int> heuristic_landmark;
+	vector<Segment> segments;
+	// my_heuristic is a 2D array stores the shortest distance. my_heuristic[i (goal_location)][j (map_size)] is the heuristic value from location j to the i-th goal location.
 	vector<vector<int>> my_heuristic;  // this is the precomputed heuristic for this agent
-  int get_heuristic(int stage, int loc) const{
-    // h to next goal and h from next goal to the last goal
-    return my_heuristic[stage][loc] + heuristic_landmark[stage];
-  }
+	vector<int> parking_heuristic;
+	int get_heuristic(int stage, int loc) const{
+		// h to next goal and h from next goal to the last goal
+		return my_heuristic[stage][loc] + heuristic_landmark[stage];
+	}
+
 	int compute_heuristic(int from, int to) const  // compute admissible heuristic between two locations
 	{
 		return max(get_DH_heuristic(from, to), instance.getManhattanDistance(from, to));
@@ -167,6 +174,7 @@ public:
 	virtual Path findPath(const CBSNode& node, const ConstraintTable& initial_constraints,
 						  const vector<Path*>& paths, int agent, int lower_bound) = 0;
 	virtual Path findPathSegment(ConstraintTable& constraint_table, int start_time, int stage, int lowerbound) = 0;
+	virtual Path findPathSegmentToPark(ConstraintTable& constraint_table, int start_time, int stage, int lowerbound) = 0;
 	virtual int getTravelTime(int start, int end, const ConstraintTable& constraint_table, int upper_bound) = 0;
 	virtual string getName() const = 0;
 
@@ -181,12 +189,17 @@ public:
 		start_location(instance.start_locations[agent]),
 		goal_location(instance.goal_locations[agent])
 	{
+		if (instance.ddmapd_instance){
+			ddmapd_path_planning = true;
+			agent_idx = agent;
+			segments = instance.getSegments(instance.goal_segmentIDs[agent]); 
+		}
 		compute_heuristics();
 	}
 
 	virtual ~SingleAgentSolver() {}
 
-  bool use_timestamps = true;
+  	bool use_timestamps = true;
 
 
 protected:

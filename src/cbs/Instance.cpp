@@ -3,13 +3,23 @@
 #include <random>      // std::default_random_engine
 #include <chrono>       // std::chrono::system_clock
 #include"Instance.h"
+#include <sys/stat.h>
+#include <nlohmann/json.hpp>
+using json = nlohmann::json;
 
 int RANDOM_WALK_STEPS = 100000;
 
-Instance::Instance(const string& map_fname, const string& agent_fname,
+Instance::Instance(const string& map_fname, const string& agent_fname, const string& assignment_folder,
 				   int num_of_agents, int num_of_rows, int num_of_cols, int num_of_obstacles, int warehouse_width) :
-		map_fname(map_fname), agent_fname(agent_fname), num_of_agents(num_of_agents)
+		map_fname(map_fname), agent_fname(agent_fname), num_of_agents(num_of_agents), assignment_folder(assignment_folder)
 {
+
+
+	struct stat info;
+	if (stat(assignment_folder.c_str(), &info) == 0 && (info.st_mode & S_IFDIR)){
+		ddmapd_instance = true;
+	}
+
 	bool succ = loadMap();
 	if (!succ)
 	{
@@ -25,8 +35,26 @@ Instance::Instance(const string& map_fname, const string& agent_fname,
 			exit(-1);
 		}
 	}
+	
 
-	succ = loadAgents();
+
+	if (stat(assignment_folder.c_str(), &info) == 0 && (info.st_mode & S_IFDIR))
+	{
+		// It's a directory, read all files in the directory
+		succ = loadAgentsJson();
+	}
+	else if (stat(agent_fname.c_str(), &info) == 0 && (info.st_mode & S_IFREG))
+	{
+		// It's a file
+		succ = loadAgents();
+	}
+	else
+	{
+		// Neither a directory nor a file
+		cerr << "Agent file " << agent_fname << " not found." << endl;
+		exit(-1);
+	}
+
 	if (!succ)
 	{
 		if (num_of_agents > 0)
@@ -42,6 +70,87 @@ Instance::Instance(const string& map_fname, const string& agent_fname,
 	}
 
 }
+
+
+bool Instance::loadAgentsJson(){
+	// Ensure assignment_folder ends with a slash
+	std::string folder = assignment_folder;
+	if (folder.back() != '/')
+	{
+		folder += '/';
+	}
+	// read agent sequence and segment info
+	std::string agent_seq_path = folder + "agent_seq.json";
+	std::ifstream agent_seq_file(agent_seq_path);
+	if (!agent_seq_file.is_open())
+	{
+		std::cerr << "Agent sequence file " << agent_seq_path << " not found." << std::endl;
+		return false;
+	}
+
+	std::string segment_info_path = folder + "segment_info.json";
+	std::ifstream segment_info_file(segment_info_path);
+	if (!segment_info_file.is_open())
+	{
+		std::cerr << "Segment info file " << segment_info_path << " not found." << std::endl;
+		return false;
+	}
+	json agent_seq_json = json::parse(agent_seq_file);
+	json segment_info_json = json::parse(segment_info_file);
+
+
+	// Initialize segments
+	segments.resize(segment_info_json.size());
+	for (auto [key, value] : segment_info_json.items()){
+        
+		int segment_id = value["segment_id"];
+		int traj_start_timestep = value["traj_start_timestep"];
+		int traj_end_timestep = value["traj_end_timestep"];
+		int agent = value["agent"];
+		vector<int> trajectory;
+		for (auto& loc : value["trajectory"]) {
+			trajectory.emplace_back(linearizeCoordinate(loc[0], loc[1]));
+		}
+		vector<int> dep_seqPos = value["dep_agent_seqPos"];
+		vector<int> dep_agent = value["dep_agent_seq"];
+		segments[segment_id] = Segment(segment_id, traj_start_timestep, traj_end_timestep, agent, dep_seqPos, dep_agent, trajectory);
+	}
+
+	// Initialize agent & goals precedence constraints
+	agent_Parking.resize(num_of_agents); // num_of_agents * map_size
+	start_locations.resize(num_of_agents); // start_locations[i] is the start location for agent i
+	goal_locations.resize(num_of_agents); // goal_locations[i] is the list of goal locations for agent i; goal_locations[i][j] the location for goal_ids[i][j]
+	goal_segmentIDs.resize(num_of_agents); // goal_segmentIDs[i] is the list of segment IDs for agent i;
+	temporal_cons.resize(num_of_agents * num_of_agents);
+	for (auto [key, value] : agent_seq_json.items())
+	{
+		int to_agent = std::stoi(key);
+		start_locations[to_agent] = linearizeCoordinate(value["start_loc"][0], value["start_loc"][1]);
+		for (int to_landmark = 0; to_landmark < value["seq"].size(); to_landmark++)
+		{
+			int to_landmark_seqID = value["seq"][to_landmark];
+			goal_locations[to_agent].push_back(segments[to_landmark_seqID].trajectory[0]);
+			goal_segmentIDs[to_agent].push_back(to_landmark_seqID);
+			for (int i = 0; i < segments[to_landmark_seqID].dep_seqPos.size(); i++){
+				int from_agent = segments[to_landmark_seqID].dep_agent[i];
+				int from_landmark = segments[to_landmark_seqID].dep_seqPos[i];
+				temporal_cons[from_agent * num_of_agents +to_agent].push_back({from_landmark, to_landmark});
+			}
+		}
+	}
+	for (int cur_agent = 0; cur_agent < num_of_agents; cur_agent++){
+		agent_Parking[cur_agent].resize(map_size, false);
+		for (int other_agent = 0; other_agent < num_of_agents; other_agent++){
+			if (cur_agent == other_agent){
+				continue;
+			}
+			agent_Parking[cur_agent][start_locations[other_agent]] = true;
+		}
+	}
+
+	return true;
+}
+
 
 
 int Instance::randomWalk(int curr, int steps) const
@@ -213,15 +322,19 @@ bool Instance::loadMap()
 	}
 	map_size = num_of_cols * num_of_rows;
 	my_map.resize(map_size, false);
-	// read map (and start/goal locations)
-	for (int i = 0; i < num_of_rows; i++)
-	{
-		getline(myfile, line);
-		for (int j = 0; j < num_of_cols; j++)
+	
+	if (!ddmapd_instance){ // shelf map don't have obstacles
+		// read map (and start/goal locations)
+		for (int i = 0; i < num_of_rows; i++)
 		{
-			my_map[linearizeCoordinate(i, j)] = (line[j] != '.');
+			getline(myfile, line);
+			for (int j = 0; j < num_of_cols; j++)
+			{
+				my_map[linearizeCoordinate(i, j)] = (line[j] != '.');
+			}
 		}
 	}
+
 	myfile.close();
 
 	// initialize moves_offset array
@@ -345,9 +458,7 @@ bool Instance::loadAgents()
       if (from_agent < num_of_agents && to_agent < num_of_agents){
         cout << from_agent << ": " << from_landmark << " -> " << to_agent << ": " << to_landmark << endl;
         temporal_cons[from_agent * num_of_agents +to_agent].push_back({from_landmark, to_landmark});
-      } else{
-        // cout << "temporal edge not considered" << endl ;
-      }
+      } 
     }
 
   }
@@ -405,3 +516,16 @@ list<int> Instance::getNeighbors(int curr) const
 	}
 	return neighbors;
 }
+
+// return the list of segments which id in id_list
+vector<Segment> Instance::getSegments(vector<int> id_list) const
+{
+	vector<Segment> rst;
+	for (int id : id_list)
+	{
+		rst.emplace_back(segments[id]);
+	}
+	return rst;
+}
+
+

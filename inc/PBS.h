@@ -22,11 +22,13 @@ public:
   // used to store initial priorities
   vector<ConstraintTable> initial_constraints;
   vector<Constraint> initial_priorities;
+  void set_heuristic(int h) { pbs_heuristic = h; }
 
 private:
   void printPaths() const;
   void printResults() const;
-
+  bool ddmapd_instance;
+  
   vector<vector<int>> temporal_adj_list, temporal_adj_list_r;
 
   void join_paths();
@@ -69,6 +71,8 @@ private:
   // void printConflicts(const CBSNode& curr) const;
 
   bool findOneConflict(int task1, int task2);
+  int pbs_heuristic = 1;
+
   // bool validateSolution() const;
 };
 

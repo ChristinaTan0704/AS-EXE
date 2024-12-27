@@ -84,9 +84,12 @@ public:
 			SingleAgentSolver(instance, agent) {}
 
 	Path findPathSegment(ConstraintTable& constraint_table, int start_time, int stage, int lowerbound);
+	Path findPathSegmentToPark(ConstraintTable& constraint_table, int start_time, int stage, int lowerbound);
+	int get_heuristic_ddmapd(int stage, int loc, int segment_stage) const;
 
 
 private:
+	void AvoidSafeParking(list<int> &next_locations);
 	// define typedefs and handles for heap
 	typedef pairing_heap<MultiLabelAStarNode*, compare<MultiLabelAStarNode::compare_node>> heap_open_t;
 	typedef pairing_heap<MultiLabelAStarNode*, compare<MultiLabelAStarNode::secondary_compare_node>> heap_focal_t;
