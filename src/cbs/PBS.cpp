@@ -2,15 +2,14 @@
 #include "SpaceTimeAStar.h"
 #include <stack>
 
-
-
-
 void PBS::printResults() const
 {
 
   int makespan = 0;
+  int total_path_len = 0;
   for (int i = 0; i < num_of_agents; i++){
     makespan = max(makespan, int(paths[i]->size() - 1));
+    total_path_len += paths[i]->size() - 1;
   }
       
 
@@ -23,7 +22,7 @@ void PBS::printResults() const
   else if (solution_cost == -3) // nodes out
     cout << "Nodesout,";
 
-  cout << " makespan : " << makespan << " ,cost : " << solution_cost << " ,runtime : " << runtime << " ,HL_expanded : " << num_HL_expanded << " ,LL_expanded : " << num_LL_expanded << " ,min_f_val : " << min_f_val << " ,dummy_start_g_val : " << dummy_start->g_val << " ,dummy_start_f_val : " << dummy_start->g_val + dummy_start->h_val << endl;
+  cout << " makespan : " << makespan << " ,cost : " << total_path_len << " ,runtime : " << runtime << " ,HL_expanded : " << num_HL_expanded << " ,LL_expanded : " << num_LL_expanded << " ,min_f_val : " << min_f_val << " ,dummy_start_g_val : " << dummy_start->g_val << " ,dummy_start_f_val : " << dummy_start->g_val + dummy_start->h_val << endl;
   // cout << solution_cost << "," << runtime << "," <<
   //   num_HL_expanded << "," << num_LL_expanded << "," << // HL_num_generated << "," << LL_num_generated << "," <<
   //   min_f_val << "," << dummy_start->g_val << "," << dummy_start->g_val + dummy_start->h_val << "," <<
@@ -254,7 +253,7 @@ void PBS::build_ct(ConstraintTable& ct, int task_id, vector<vector<int>> adj_lis
   auto high_prio_agents = reachable_set(task_id, adj_list_r);
   high_prio_agents.erase(task_id);
 
-  //TODO remove later
+
   cout << "Higher-priority tasks: ";
   for (int i = 0; i < num_of_tasks; i++){
     if (high_prio_agents.find(i) != high_prio_agents.end()){
@@ -371,7 +370,6 @@ bool PBS::generateChild(CBSNode* node, CBSNode* parent){
         }
 
         cout << "plan for " << agent << "(" << task << ")"<< endl;
-      // TODO add the other agent's parking location to obstacles
 
         build_ct(ct, i, adj_list_r);
 
@@ -480,10 +478,32 @@ bool PBS::generateChild(CBSNode* node, CBSNode* parent){
       node->g_val += g_i;
     }
   }
-  // TODO add an option to use the estimate makespan as g_val
   else if (pbs_heuristic == 2 ){
-    
-    int debug = 1;
+    int num_tasks = id2task.size();
+
+    // initialize priorities
+    vector<pair<int, int>> priority; // {a, x} a should be done before x
+    for (auto con: node->constraints){
+      int a, x, y, t;
+      constraint_type type;
+      tie(a, x, y, t, type) = con;
+      if (type == constraint_type::GPRIORITY){
+        priority.push_back({a, x}); // <id_from, id_to, -1, -1, GPRIORITY>: used for PBS
+      }
+    }
+
+    // initialize earliest_start_time
+    vector<int> earliest_start_time;
+    for (int task_id = 0; task_id < num_tasks; task_id++){
+      if (paths[task_id]->empty()) {
+          earliest_start_time.push_back(0);
+      }
+      else {
+          earliest_start_time.push_back(paths[task_id]->end_time());
+      }
+    }
+
+    node->g_val = minimumCompletionTime(num_tasks, priority, earliest_start_time);
   }
   // compute g
 
@@ -543,11 +563,33 @@ bool PBS::generateRoot()
       }
 
       cout << "plan for " << agent << "(" << task << ")"<< endl;
+      
       ConstraintTable ct;
       build_ct(ct, i, adj_list_r);
       
       if (ddmapd_instance){
+//        auto debug = search_engines[agent]->findPathSegment(ct, start_time, task, 0);
         paths_found_initially[i] = search_engines[agent]->findPathSegmentToPark(ct, start_time, task, 0);
+        // TODO del debug
+        
+        // if (ddmapd_instance){
+        //   cout << "goal : " << i << endl;
+        //   cout << "path size: " << paths_found_initially[i].size() << endl;
+        //   cout << "task start loc : " << search_engines[agent]->goal_location[task] <<  " end loc : " << search_engines[agent]->segments[task].trajectory.back() << " parking loc : " << search_engines[agent]->instance.start_locations[agent] << endl;
+        //   cout << "segment traj: ";
+        //   for (auto loc: search_engines[agent]->segments[task].trajectory){
+        //     cout << loc << " ";
+        //   }
+        //   cout << endl;
+        //   cout << "path: ";
+        //   for (auto p : paths_found_initially[i].path){
+        //     cout << p.location << " --> ";
+        //   }
+        //   cout << endl;
+        // }
+
+
+        // TODO debug and print the path 
       } else {
         paths_found_initially[i] = search_engines[agent]->findPathSegment(ct, start_time, task, 0);
       }
@@ -693,6 +735,7 @@ bool PBS::solve(double time_limit, int cost_lowerbound, int cost_upperbound)
 			break;
 		}
 		CBSNode* curr = dfs_stack.top();
+    cout << "pop h-val " << curr->h_val << " g-val " << curr->g_val << endl; // TODO delete later
 		dfs_stack.pop();
 		// open_list.erase(curr->open_handle);
 		// takes the paths_found_initially and UPDATE all constrained paths found for agents from curr to dummy_start (and lower-bounds)
@@ -815,3 +858,89 @@ PBS::~PBS(){
 	releaseNodes();
 	mdd_helper.clear();
 }
+
+
+int PBS::get_task_distance(int start_taskID, int end_taskID){
+  int start_agent, start_task, end_agent, end_task;
+  tie(start_agent, start_task) = id2task[start_taskID];
+  tie(end_agent, end_task) = id2task[end_taskID];
+  int start_goal_loc = search_engines[start_agent]->goal_location[start_task];
+  int end_goal_loc = search_engines[end_agent]->goal_location[end_task];
+
+  if (ddmapd_instance){
+    int traj_end = search_engines[start_agent]->segments[start_task].trajectory.back();
+    return search_engines[start_agent]->instance.getManhattanDistance(traj_end, end_goal_loc) + search_engines[start_agent]->segments[start_task].trajectory.size() - 1;
+  } else {
+    return search_engines[start_agent]->instance.getManhattanDistance(start_goal_loc, end_goal_loc);
+  }
+
+}
+
+
+
+int PBS::minimumCompletionTime(int num_tasks, vector<pair<int, int>>& priority, vector<int>& earliest_start_time){
+   // Step 1: Build the graph and calculate in-degrees for topological sort
+   vector<vector<int>> graph(num_tasks);  // Adjacency list for the graph
+   vector<int> in_degree(num_tasks, 0);   // In-degree (number of incoming edges) for each task
+
+   for (const auto& p : priority) {
+       int task_a = p.first;
+       int task_b = p.second;
+       graph[task_a].push_back(task_b);  // Add edge from task_a to task_b
+       in_degree[task_b]++;             // Increment in-degree of task_b
+   }
+
+   // Step 2: Initialize the queue for topological sorting
+   std::queue<int> q;
+   vector<int> completion_time(num_tasks, 0);  // Completion time for each task
+
+   // Enqueue tasks with no dependencies (in-degree == 0)
+   for (int i = 0; i < num_tasks; ++i) {
+       if (in_degree[i] == 0) {
+           q.push(i);
+           completion_time[i] = earliest_start_time[i];  // Start at its earliest start time
+       }
+   }
+
+   int visited_count = 0;  // To detect cycles
+
+   // Step 3: Process the tasks in topological order
+   while (!q.empty()) {
+       int current = q.front();
+       q.pop();
+       visited_count++;
+
+       // Traverse all tasks dependent on the current task
+       for (int next : graph[current]) {
+           // Calculate the earliest time `next` can start based on `current`
+
+           completion_time[next] = max({
+               completion_time[next],  // Current completion time of `next`
+               completion_time[current] + get_task_distance(current, next), // Completion time of `current` + distance
+               earliest_start_time[next] // Earliest start time of `next`
+           });
+
+
+           // Decrement the in-degree and enqueue if it becomes 0
+           if (--in_degree[next] == 0) {
+               q.push(next);
+           }
+       }
+   }
+
+   // Detect cycle: If not all tasks are visited
+   if (visited_count != num_tasks) {
+    cout << "Cycle detected in task dependencies!" << endl;
+   }
+
+   // Step 4: Find the maximum completion time
+   int total_time = 0;
+   for (int i = 0; i < num_tasks; ++i) {
+       cout << i << " completion time: " << completion_time[i] << endl;
+       total_time = max(total_time, completion_time[i]);
+   }
+
+   return total_time;
+}
+
+

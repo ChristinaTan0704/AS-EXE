@@ -109,6 +109,7 @@ private:
 
 	// Updates the path datamember
 	void updatePath(const LLNode* goal, Path& path);
+	void printPath(const LLNode* goal);
 	void updateFocalList();
 	inline MultiLabelAStarNode* popNode();
 	inline void pushNode(MultiLabelAStarNode* node);
