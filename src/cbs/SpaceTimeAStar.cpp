@@ -254,15 +254,260 @@ Path MultiLabelSpaceTimeAStar::findShortestPath(ConstraintTable &constraint_tabl
 	return path;
 }
 
+/* a copy of findPathSegmentToPark; able to plan dummy path for each goal 
+
 Path MultiLabelSpaceTimeAStar::findPathSegmentToPark(ConstraintTable &constraint_table, int start_time, int stage, int lowerbound)
 {	
 
-	// TODO change this to be the input start location
 	int loc = start_location;
-	// if (stage != 0)
+
+	// generate start and add it to the OPEN & FOCAL list
+	Path path;
+	path.begin_time = start_time;
+	auto start = new MultiLabelAStarNode(loc,						// location
+										 0,							// g val
+										 get_heuristic_ddmapd(stage, loc, 0), // h val segment_stage is 0
+										 nullptr,					// parent
+										 start_time,				// timestep
+										 stage,						// stage
+										 0, false);
+
+	start->segment_stage = 0; // segment stage
+	start->secondary_keys.push_back(-start->g_val);
+	num_generated++;
+	start->open_handle = open_list.push(start);
+	start->focal_handle = focal_list.push(start);
+	start->in_openlist = true;
+	allNodes_table.insert(start);
+	min_f_val = (int)start->getFVal();
+	int holding_time = constraint_table.length_min;
+	if (stage == goal_location.size() - 1)
+	{
+		holding_time = constraint_table.getHoldingTime(); // the earliest timestep that the agent can hold its goal location. The length_min is considered here.
+	}
+	lower_bound = max(holding_time - start_time, max(min_f_val, lowerbound));
+
+	// TODO delete later print the segment path
+	// cout << "segment trajectory ";
+	// for (auto loc : segments[stage].trajectory)
 	// {
-	// 	loc = goal_location[stage - 1];
+	// 	cout << "[" << instance.getColCoordinate(loc) << "," << instance.getRowCoordinate(loc) << "] @ " << loc << " --> ";
 	// }
+	// cout << endl;
+
+	while (!open_list.empty())
+	{
+		updateFocalList(); // update FOCAL if min f-val increased
+		auto *curr = popNode();
+		// printPath(curr); // TODO del
+
+		if (curr->segment_stage == 1 && curr->location == instance.start_locations[agent_idx]){ // reach the safe parking location
+			updatePath(curr, path);
+			break;
+		}
+
+		if (curr->timestep >= constraint_table.length_max)
+			continue;
+
+		list<int> next_locations = instance.getNeighbors(curr->location);
+		AvoidSafeParking(next_locations); // avoid the safe parking location of other agents
+		next_locations.emplace_back(curr->location);
+		
+
+		// if reached the segment start, try to add a action to reach the segment end
+		if (curr->segment_stage == 0 && curr->location == goal_location[stage] && // reach all previous goals
+			curr->timestep >= holding_time){
+			// update curr with segment trajectory by creating new node 
+			auto segment_node = curr; 
+			bool traj_constrained = false;
+			auto segment_trajectory = segments[stage].trajectory;
+			for (int i = 1; i < segment_trajectory.size(); i++){ // segment_trajectory.size() - 1 to exclude the trajectory end location
+				auto next = new MultiLabelAStarNode(segment_trajectory[i], segment_node->g_val + 1, segment_node->h_val, segment_node, segment_node->timestep + 1, stage, segment_node->num_of_conflicts, false);
+				if (constraint_table.constrained(segment_trajectory[i], segment_node->timestep + 1) ||
+				constraint_table.constrained(segment_node->location, segment_trajectory[i], segment_node->timestep + 1)){
+					traj_constrained = true; // if the trajectory is constrained, then break
+					break;
+				}
+				segment_node = next;
+				continue;
+			}
+			// if the trajectory is constrained, then continue, keep exploring the normal neighbors
+			if (traj_constrained){
+				continue;
+			}
+
+			auto next_g_val = segment_node->g_val; // “segment_trajectory.size() - 1” to exclude the start location
+			auto next_h_val = get_heuristic_ddmapd(stage, segment_trajectory.back(), 1);
+			segment_node->g_val = next_g_val; 
+			segment_node->h_val = next_h_val;
+			segment_node->segment_stage = 1;
+			segment_node->timestamps = curr->timestamps;
+			segment_node->secondary_keys.push_back(-segment_node->g_val);
+			segment_node->wait_at_goal = true;
+
+			// reinitiliaze the curr node with the end location of the trajectory
+			// cout << "reach the goal start " << goal_location[stage] << " jump to trajectory end " << segments[stage].trajectory.back() << " moving to end " << instance.start_locations[agent_idx] << endl;
+			// printPath(segment_node);
+
+			// try to retrieve it from the hash table
+			auto it = allNodes_table.find(segment_node);
+			if (it == allNodes_table.end())
+			{
+				pushNode(segment_node);
+				allNodes_table.insert(segment_node);
+				continue;
+			}
+			// update existing node's if needed (only in the open_list)
+			auto existing_next = *it;
+			if (existing_next->getFVal() > segment_node->getFVal() || // if f-val decreased through this new path
+				(existing_next->getFVal() == segment_node->getFVal() &&
+				 LLNode::secondary_compare_node_not_random()(existing_next, segment_node)
+				 && existing_next->segment_stage == 1)) // or it remains the same but there's fewer conflicts
+			{
+				if (!existing_next->in_openlist) // if its in the closed list (reopen)
+				{
+					existing_next->copy(*segment_node);
+					pushNode(existing_next);
+				}
+				else
+				{
+					bool add_to_focal = false;	  // check if it was above the focal bound before and now below (thus need to be inserted)
+					bool update_in_focal = false; // check if it was inside the focal and needs to be updated (because f-val changed)
+					bool update_open = false;
+					if ((next_g_val + next_h_val) <= lower_bound)
+					{ // if the new f-val qualify to be in FOCAL
+						if (existing_next->getFVal() > lower_bound)
+							add_to_focal = true; // and the previous f-val did not qualify to be in FOCAL then add
+						else
+							update_in_focal = true; // and the previous f-val did qualify to be in FOCAL then update
+					}
+					if (existing_next->getFVal() > next_g_val + next_h_val)
+						update_open = true;
+
+					existing_next->copy(*segment_node); // update existing node
+
+					if (update_open)
+						open_list.increase(existing_next->open_handle); // increase because f-val improved
+					if (add_to_focal)
+						existing_next->focal_handle = focal_list.push(existing_next);
+					if (update_in_focal)
+						focal_list.update(existing_next->focal_handle); // should we do update? yes, because number of conflicts may go up or down
+				}
+			}
+			delete segment_node; // not needed anymore -- we already generated it before
+		}
+
+
+		// generate child
+		for (int next_location : next_locations)
+		{
+			int next_timestep = curr->timestep + 1;
+			if (max(constraint_table.cat_size, constraint_table.latest_timestep) + 1 < curr->timestep)
+			{ // now everything is static, so switch to space A* where we always use the same timestep
+				if (next_location == curr->location)
+				{
+					continue;
+				}
+				next_timestep--;
+			}
+
+			if (constraint_table.constrained(next_location, next_timestep) ||
+				constraint_table.constrained(curr->location, next_location, next_timestep))
+				continue;
+
+			// setting the stage
+			auto stage = curr->stage;
+			auto timestamps = curr->timestamps;
+			auto segment_stage = curr->segment_stage;
+
+			// compute cost to next_id via curr node
+			int next_g_val = curr->g_val + 1;
+			// int next_h_val = my_heuristic[next_location];
+			int next_h_val = max(get_heuristic_ddmapd(stage, next_location, segment_stage), holding_time - next_timestep);
+			// if (next_g_val + next_h_val > constraint_table.length_max || next_g_val + next_h_val > f_ub[stage])
+			// 	continue;
+			// TODO use CAT
+			int next_internal_conflicts = curr->num_of_conflicts;
+
+			// generate (maybe temporary) node
+			auto next = new MultiLabelAStarNode(next_location, next_g_val, next_h_val,
+												curr, next_timestep, stage, next_internal_conflicts, false);
+
+			next->timestamps = timestamps;
+			next->secondary_keys.push_back(-next_g_val);
+			next->segment_stage = segment_stage;
+
+			next->dist_to_next = my_heuristic[stage][next_location];
+
+			if (next->stage == goal_location.size() - 1 && next_location == goal_location.back() && curr->location == goal_location.back())
+			{
+				next->wait_at_goal = true;
+			}
+
+			// try to retrieve it from the hash table
+			auto it = allNodes_table.find(next);
+			if (it == allNodes_table.end())
+			{
+				pushNode(next);
+				allNodes_table.insert(next);
+				continue;
+			}
+			// update existing node's if needed (only in the open_list)
+			// TODO if  it's the same and the segment state is also the same
+			auto existing_next = *it;
+			if (existing_next->getFVal() > next->getFVal() || // if f-val decreased through this new path
+				(existing_next->getFVal() == next->getFVal() &&
+				 LLNode::secondary_compare_node_not_random()(existing_next, next)
+				 // existing_next->num_of_conflicts > next->num_of_conflicts
+				 )) // or it remains the same but there's fewer conflicts
+			{
+				if (!existing_next->in_openlist) // if its in the closed list (reopen)
+				{
+					existing_next->copy(*next);
+					pushNode(existing_next);
+				}
+				else
+				{
+					bool add_to_focal = false;	  // check if it was above the focal bound before and now below (thus need to be inserted)
+					bool update_in_focal = false; // check if it was inside the focal and needs to be updated (because f-val changed)
+					bool update_open = false;
+					if ((next_g_val + next_h_val) <= lower_bound)
+					{ // if the new f-val qualify to be in FOCAL
+						if (existing_next->getFVal() > lower_bound)
+							add_to_focal = true; // and the previous f-val did not qualify to be in FOCAL then add
+						else
+							update_in_focal = true; // and the previous f-val did qualify to be in FOCAL then update
+					}
+					if (existing_next->getFVal() > next_g_val + next_h_val)
+						update_open = true;
+
+					existing_next->copy(*next); // update existing node
+
+					if (update_open)
+						open_list.increase(existing_next->open_handle); // increase because f-val improved
+					if (add_to_focal)
+						existing_next->focal_handle = focal_list.push(existing_next);
+					if (update_in_focal)
+						focal_list.update(existing_next->focal_handle); // should we do update? yes, because number of conflicts may go up or down
+				}
+			}
+			delete next; // not needed anymore -- we already generated it before
+		} // end for loop that generates successors
+	
+	
+	
+	
+	} // end while loop
+
+	releaseNodes();
+	return path;
+}
+
+*/
+Path MultiLabelSpaceTimeAStar::findPathSegmentToPark(ConstraintTable &constraint_table, int start_time, int stage, int lowerbound)
+{	
+
+	int loc = start_location;
 
 	// generate start and add it to the OPEN & FOCAL list
 	Path path;
