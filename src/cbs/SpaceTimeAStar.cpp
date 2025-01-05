@@ -6,18 +6,25 @@ void MultiLabelSpaceTimeAStar::printPath(const LLNode *goal)
 	cout << "Segment_stage : " << goal->segment_stage ;
 	cout << " Path: ";
 	const LLNode *curr = goal;
+	// int idx = 0;
+	// int dummy_start_debug = -1;
 	while (curr != nullptr)
 	{
 		// path[curr->g_val].location = curr->location;
 		
-		cout << "[" << instance.getColCoordinate(curr->location) << "," << instance.getRowCoordinate(curr->location) << "]@" << curr->timestep << " ";
-		cout << curr->location << " (g " << curr->g_val << ", h " << curr->h_val << ", t " << curr->timestep << ", s " << curr->stage << ")  <-- "; 
+		cout << "[" << instance.getRowCoordinate(curr->location) << "," << instance.getColCoordinate(curr->location) << "]@" << curr->timestep << " ";
+		cout << curr->location << " (g " << curr->g_val << ", h " << curr->h_val << ", t " << curr->timestep << ", s " << curr->stage << " d " << curr->is_dummy_path <<  " )  <-- "; // " idx " << idx <<
 		// path[curr->g_val].single = false;
 		// path[curr->g_val].mdd_width = 0;
-
+		// if (curr->is_dummy_path && dummy_start_debug == -1)
+		// {
+		// 	dummy_start_debug = idx + 1;
+		// }
+		// idx ++ ;
 		curr = curr->parent;
 	}
 	cout << endl;
+	// cout << "dummy_start_timestep : " << dummy_start_debug << endl;
 }
 
 
@@ -26,8 +33,10 @@ void MultiLabelSpaceTimeAStar::updatePath(const LLNode *goal, Path &path)
 	path.path.resize(goal->g_val + 1);
 	path.timestamps.resize(goal_location.size(), 0);
 	path.timestamps.back() = goal->g_val;
+	dummy_path_len = -1; // exclude the start point (segment end point) of dummy path
 
 	const LLNode *curr = goal;
+	int idx = 0;
 	while (curr != nullptr)
 	{
 		path[curr->g_val].location = curr->location;
@@ -43,7 +52,10 @@ void MultiLabelSpaceTimeAStar::updatePath(const LLNode *goal, Path &path)
 		{
 			path[curr->g_val].is_goal = false;
 		}
-
+		if (curr->is_dummy_path)
+		{
+			dummy_path_len++;
+		}
 		curr = curr->parent;
 	}
 }
@@ -289,7 +301,7 @@ Path MultiLabelSpaceTimeAStar::findPathSegmentToPark(ConstraintTable &constraint
 
 	// TODO delete later print the segment path
 	// cout << "segment trajectory ";
-	// for (auto loc : segments[stage].trajectory)
+	// for (auto loc : agent_segments[stage].trajectory)
 	// {
 	// 	cout << "[" << instance.getColCoordinate(loc) << "," << instance.getRowCoordinate(loc) << "] @ " << loc << " --> ";
 	// }
@@ -320,7 +332,7 @@ Path MultiLabelSpaceTimeAStar::findPathSegmentToPark(ConstraintTable &constraint
 			// update curr with segment trajectory by creating new node 
 			auto segment_node = curr; 
 			bool traj_constrained = false;
-			auto segment_trajectory = segments[stage].trajectory;
+			auto segment_trajectory = agent_segments[stage].trajectory;
 			for (int i = 1; i < segment_trajectory.size(); i++){ // segment_trajectory.size() - 1 to exclude the trajectory end location
 				auto next = new MultiLabelAStarNode(segment_trajectory[i], segment_node->g_val + 1, segment_node->h_val, segment_node, segment_node->timestep + 1, stage, segment_node->num_of_conflicts, false);
 				if (constraint_table.constrained(segment_trajectory[i], segment_node->timestep + 1) ||
@@ -346,7 +358,7 @@ Path MultiLabelSpaceTimeAStar::findPathSegmentToPark(ConstraintTable &constraint
 			segment_node->wait_at_goal = true;
 
 			// reinitiliaze the curr node with the end location of the trajectory
-			// cout << "reach the goal start " << goal_location[stage] << " jump to trajectory end " << segments[stage].trajectory.back() << " moving to end " << instance.start_locations[agent_idx] << endl;
+			// cout << "reach the goal start " << goal_location[stage] << " jump to trajectory end " << agent_segments[stage].trajectory.back() << " moving to end " << instance.start_locations[agent_idx] << endl;
 			// printPath(segment_node);
 
 			// try to retrieve it from the hash table
@@ -504,11 +516,19 @@ Path MultiLabelSpaceTimeAStar::findPathSegmentToPark(ConstraintTable &constraint
 }
 
 */
+
+
 Path MultiLabelSpaceTimeAStar::findPathSegmentToPark(ConstraintTable &constraint_table, int start_time, int stage, int lowerbound)
 {	
-
-	int loc = start_location;
-
+	int loc;
+	if (stage == 0){
+		loc = start_location;
+	}else{
+		// start from the end of the previous segment
+		loc = agent_segments[stage - 1].trajectory.back();
+	}
+	
+	
 	// generate start and add it to the OPEN & FOCAL list
 	Path path;
 	path.begin_time = start_time;
@@ -537,7 +557,7 @@ Path MultiLabelSpaceTimeAStar::findPathSegmentToPark(ConstraintTable &constraint
 
 	// TODO delete later print the segment path
 	// cout << "segment trajectory ";
-	// for (auto loc : segments[stage].trajectory)
+	// for (auto loc : agent_segments[stage].trajectory)
 	// {
 	// 	cout << "[" << instance.getColCoordinate(loc) << "," << instance.getRowCoordinate(loc) << "] @ " << loc << " --> ";
 	// }
@@ -550,6 +570,7 @@ Path MultiLabelSpaceTimeAStar::findPathSegmentToPark(ConstraintTable &constraint
 		// printPath(curr); // TODO del
 
 		if (curr->segment_stage == 1 && curr->location == instance.start_locations[agent_idx]){ // reach the safe parking location
+			printPath(curr);
 			updatePath(curr, path);
 			break;
 		}
@@ -568,7 +589,7 @@ Path MultiLabelSpaceTimeAStar::findPathSegmentToPark(ConstraintTable &constraint
 			// update curr with segment trajectory by creating new node 
 			auto segment_node = curr; 
 			bool traj_constrained = false;
-			auto segment_trajectory = segments[stage].trajectory;
+			auto segment_trajectory = agent_segments[stage].trajectory;
 			for (int i = 1; i < segment_trajectory.size(); i++){ // segment_trajectory.size() - 1 to exclude the trajectory end location
 				auto next = new MultiLabelAStarNode(segment_trajectory[i], segment_node->g_val + 1, segment_node->h_val, segment_node, segment_node->timestep + 1, stage, segment_node->num_of_conflicts, false);
 				if (constraint_table.constrained(segment_trajectory[i], segment_node->timestep + 1) ||
@@ -592,9 +613,9 @@ Path MultiLabelSpaceTimeAStar::findPathSegmentToPark(ConstraintTable &constraint
 			segment_node->timestamps = curr->timestamps;
 			segment_node->secondary_keys.push_back(-segment_node->g_val);
 			segment_node->wait_at_goal = true;
-
+			segment_node->is_dummy_path = true;
 			// reinitiliaze the curr node with the end location of the trajectory
-			// cout << "reach the goal start " << goal_location[stage] << " jump to trajectory end " << segments[stage].trajectory.back() << " moving to end " << instance.start_locations[agent_idx] << endl;
+			// cout << "reach the goal start " << goal_location[stage] << " jump to trajectory end " << agent_segments[stage].trajectory.back() << " moving to end " << instance.start_locations[agent_idx] << endl;
 			// printPath(segment_node);
 
 			// try to retrieve it from the hash table
@@ -684,6 +705,7 @@ Path MultiLabelSpaceTimeAStar::findPathSegmentToPark(ConstraintTable &constraint
 			next->timestamps = timestamps;
 			next->secondary_keys.push_back(-next_g_val);
 			next->segment_stage = segment_stage;
+			next->is_dummy_path = curr->is_dummy_path;
 
 			next->dist_to_next = my_heuristic[stage][next_location];
 
@@ -1130,7 +1152,7 @@ int MultiLabelSpaceTimeAStar::get_heuristic_ddmapd(int stage, int loc, int segme
 	if (segment_stage == 0) // to the segment start location 
 	{	
 		// h to segment start + segment length + segment end to parking location
-		return my_heuristic[stage][loc] + segments[stage].traj_len - 1 + parking_heuristic[segments[stage].trajectory.back()]; 
+		return my_heuristic[stage][loc] + agent_segments[stage].traj_len - 1 + parking_heuristic[agent_segments[stage].trajectory.back()]; 
 	}
 	else
 	{

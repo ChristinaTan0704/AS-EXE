@@ -579,7 +579,7 @@ bool PBS_naive::findOneConflict(int a1, int a2){
     int i1 = t - paths[a1]->begin_time;
     int i2 = t - paths[a2]->begin_time;
     if (paths[a1]->at(i1).location == paths[a2]->at(i2).location){
-      cout << "vertex conf! " << i1 << "," << i2 << endl;
+      cout << "vertex conf! " << i1 << "@( "<< paths[a1]->at(i1).location << " ) " << i2 << "@( "<< paths[a2]->at(i2).location << " ) " << endl;
       return true;
     }
     if (paths[a1]->at(i1 - 1).location == paths[a2]->at(i2).location && paths[a1]->at(i1).location == paths[a2]->at(i2 - 1).location){

@@ -9,6 +9,7 @@ public:
 	int location;
   unsigned int stage;
   unsigned int segment_stage;
+  bool is_dummy_path = false;
   unsigned int dist_to_next=0;
   vector<int> timestamps;
   vector<int> secondary_keys;
@@ -151,11 +152,13 @@ public:
 	double runtime_build_CAT = 0; // runtime of building conflict avoidance table
 
 	bool ddmapd_path_planning = false;
+	int dummy_path_len = 0;
+	int pre_task_id = -1;
 	int agent_idx; 
 	int start_location;
 	vector<int> goal_location;
   	vector<int> heuristic_landmark;
-	vector<Segment> segments;
+	vector<Segment> agent_segments;
 	// my_heuristic is a 2D array stores the shortest distance. my_heuristic[i (goal_location)][j (map_size)] is the heuristic value from location j to the i-th goal location.
 	vector<vector<int>> my_heuristic;  // this is the precomputed heuristic for this agent
 	vector<int> parking_heuristic;
@@ -192,7 +195,7 @@ public:
 		if (instance.ddmapd_instance){
 			ddmapd_path_planning = true;
 			agent_idx = agent;
-			segments = instance.getSegments(instance.goal_segmentIDs[agent]); 
+			agent_segments = instance.getSegments(instance.goal_segmentIDs[agent]); 
 		}
 		compute_heuristics();
 	}

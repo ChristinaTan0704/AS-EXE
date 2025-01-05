@@ -8,6 +8,8 @@ unordered_set<int> reachable_set(int source, vector<vector<int>> adj_list);
 class PBS: public CBS
 {
 public:
+  vector<Path*> curr_dummy_paths;
+  vector<Path> dummy_paths_found_initially;  // contain initial paths found
 
   ////////////////////////////////////////////////////////////////////////////////////////////
   // Runs the algorithm until the problem is solved or time is exhausted
@@ -25,6 +27,8 @@ public:
   void set_heuristic(int h) { pbs_heuristic = h; }
 
 private:
+  void updateDummyPath(Path & curr_path, Path & dummy_path, int & dummy_path_length);
+
   void printPaths() const;
   void printResults() const;
   bool ddmapd_instance;
@@ -52,16 +56,23 @@ private:
   void get_adj_list(CBSNode* node, vector<vector<int>>& adj_list);
   void get_adj_list(CBSNode* node, vector<vector<int>>& adj_list, vector<vector<int>>& adj_list_r);
   bool topological_sort(vector<vector<int>>& adj_list, vector<int>& planning_order);
-
+  int get_previous_taskID(int current_global_ID);
+  int get_next_taskID(int current_global_ID);
 
   // add paths of agents with higher priorities
   // add all other paths to cat.
   void build_ct(ConstraintTable& ct, int task_id, vector<vector<int>> adj_list_r);
+  void build_ct_with_dummypath(ConstraintTable& ct, int agent_id, vector<vector<int>> adj_list_r);
+  void remove_dummy_path(int dummy_length, Path & curr_path);
+  // void build_ct_remove_dummy_path(vector<Path*> & curr_paths, ConstraintTable& ct, int task_id, vector<vector<int>> adj_list_r);
 
   int num_of_tasks;
 
   inline bool is_task_a_final_one(int task);
   inline void updatePaths(CBSNode* curr);
+  inline void updatePathsWithDummyPaths(CBSNode* curr);
+  void AddDummyPathToAllLastTask(vector<Path*> & raw_paths);
+  void AddDummyPathToLastTask(Path & curr_path, Path & dummy_path);
 
   // 
   // vector<Path*> paths;
@@ -74,6 +85,7 @@ private:
   // void printConflicts(const CBSNode& curr) const;
 
   bool findOneConflict(int task1, int task2);
+  bool findOneConflictWithDummyPath(int task1, int task2);
   int pbs_heuristic = 1;
 
   // bool validateSolution() const;
@@ -116,4 +128,6 @@ private:
 
   bool findOneConflict(int task1, int task2);
   // bool validateSolution() const;
+
+
 };

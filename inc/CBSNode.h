@@ -55,7 +55,8 @@ public:
 
 	list<pair<int, Path>> paths; // new paths
 	list<Constraint> constraints; // new constraints
-
+	list<pair<int, Path>> planned_dummy_paths; // dummy paths planned so far; used to restore while clearing paths for lower priority agents 
+	
   bool is_solution = false;
 
 	int g_val;

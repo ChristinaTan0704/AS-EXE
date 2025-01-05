@@ -88,6 +88,7 @@ public:
 	int get_heuristic_ddmapd(int stage, int loc, int segment_stage) const;
 
 
+
 private:
 	void AvoidSafeParking(list<int> &next_locations);
 	// define typedefs and handles for heap
