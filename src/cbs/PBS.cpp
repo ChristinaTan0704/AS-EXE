@@ -1,7 +1,7 @@
 #include "PBS.h"
 #include "SpaceTimeAStar.h"
 #include <stack>
-
+typedef pairing_heap<CBSNode*, compare<CBSNode::compare_node>> dfs_stack_t;
 void PBS::printResults() const
 {
 
@@ -11,6 +11,19 @@ void PBS::printResults() const
   {
     makespan = max(makespan, int(paths[i]->size() - 1));
     total_path_len += paths[i]->size() - 1;
+  }
+
+
+  for (int task_global_ID = 0; task_global_ID < num_of_tasks; task_global_ID++)
+  {
+    int agent, task;
+    tie(agent, task) = id2task[task_global_ID];
+    cout << "Dummy Path : " << task_global_ID << " agent " << agent << " task " << task << " : ";
+    for (int i = 0; i < curr_dummy_paths[task_global_ID]->size(); i++)
+    {
+      cout << "(" << search_engines[agent]->instance.getRowCoordinate(curr_dummy_paths[task_global_ID]->at(i).location) << ", " << search_engines[agent]->instance.getColCoordinate(curr_dummy_paths[task_global_ID]->at(i).location) << " time " << curr_dummy_paths[task_global_ID]->begin_time + i << " )@" << " --> ";
+    }
+    cout << endl;
   }
 
   if (solution_cost >= 0) // solved
@@ -23,6 +36,8 @@ void PBS::printResults() const
     cout << "Nodesout,";
 
   cout << " makespan : " << makespan << " ,cost : " << total_path_len << " ,runtime : " << runtime << " ,HL_expanded : " << num_HL_expanded << " ,LL_expanded : " << num_LL_expanded << " ,min_f_val : " << min_f_val << " ,dummy_start_g_val : " << dummy_start->g_val << " ,dummy_start_f_val : " << dummy_start->g_val + dummy_start->h_val << endl;
+  cout << "topology_sort_time : " << topology_sort_time << " sum_a_star_times: " << sum_a_star_times << " a_star runtime: " << a_star_runtime << endl;
+  cout << "part_a time : " << part_a_time << " part_b time : " << part_b_time << " part_c time : " << part_c_time << " part_d time : " << part_d_time << " part_e time : " << part_e_time << " part_f time : " << part_f_time << " part_g time : " << part_g_time << " part_h time : " << part_h_time << " part_i time : " << part_i_time << endl;
   // cout << solution_cost << "," << runtime << "," <<
   //   num_HL_expanded << "," << num_LL_expanded << "," << // HL_num_generated << "," << LL_num_generated << "," <<
   //   min_f_val << "," << dummy_start->g_val << "," << dummy_start->g_val + dummy_start->h_val << "," <<
@@ -38,7 +53,7 @@ void PBS::printPaths() const
 
     for (int t = 0; t < paths[i]->size(); t++)
     {
-      cout << "(" << instance->getRowCoordinate(paths[i]->at(t).location) << ", " << instance->getColCoordinate(paths[i]->at(t).location) << ")@" << t;
+      cout << "(" << instance->getRowCoordinate(paths[i]->at(t).location) << ", " << instance->getColCoordinate(paths[i]->at(t).location)  << " task " << paths[i]->at(t).task << " )@" << t;
       if (paths[i]->at(t).is_goal)
       {
         cout << "*";
@@ -48,7 +63,7 @@ void PBS::printPaths() const
     cout << endl;
     for (int j = 0; j < paths[i]->timestamps.size(); j++)
     {
-      cout << "(" << instance->getRowCoordinate(search_engines[i]->goal_location[j]) << ", " << instance->getColCoordinate(search_engines[i]->goal_location[j]) << ")@" << paths[i]->timestamps[j];
+      cout << "(" << instance->getRowCoordinate(search_engines[i]->goal_location[j]) << ", " << instance->getColCoordinate(search_engines[i]->goal_location[j]) << " task " << paths[i]->at(j).task << " )@" << paths[i]->timestamps[j];
       cout << "->";
     }
     cout << endl;
@@ -205,12 +220,12 @@ void PBS::AddDummyPathToAllLastTask(vector<Path*> & raw_paths) // update the pat
       {
         raw_paths[curr_task_global_id]->path.insert(raw_paths[curr_task_global_id]->path.end(), curr_dummy_paths[curr_task_global_id]->path.begin(), curr_dummy_paths[curr_task_global_id]->path.end());
         // debug TODO debug delete this
-        cout << "########## preprocess :  add dummy path to " << curr_task_global_id << endl;
-        for (auto p : raw_paths[curr_task_global_id]->path)
-        {
-          cout << p.location << " --> ";
-        }
-        cout << endl;
+        // cout << "########## preprocess :  add dummy path to " << curr_task_global_id << endl;
+        // for (auto p : raw_paths[curr_task_global_id]->path)
+        // {
+        //   cout << p.location << " --> ";
+        // }
+        // cout << endl;
         // debug TODO debug delete this
 
       }
@@ -226,7 +241,7 @@ PBS::PBS(const Instance &instance, int screen) : CBS(instance, false, heuristics
   this->num_of_agents = instance.getDefaultNumberOfAgents();
   // mdd_helper(initial_constraints, search_engines),
   clock_t t = clock();
-
+  
   search_engines.resize(num_of_agents);
   idbase.resize(num_of_agents, 0);
 
@@ -276,6 +291,11 @@ PBS::PBS(const Instance &instance, int screen) : CBS(instance, false, heuristics
   {
     instance.printAgents();
   }
+
+  task_locVal.resize(num_of_tasks);
+  map_size = instance.map_size;
+
+  
 }
 
 void PBS::get_adj_list(CBSNode *node, vector<vector<int>> &adj_list)
@@ -319,6 +339,7 @@ void PBS::get_adj_list(CBSNode *node, vector<vector<int>> &adj_list, vector<vect
 
 bool PBS::topological_sort(vector<vector<int>> &adj_list, vector<int> &planning_order)
 {
+  clock_t topo_start_time = clock();
   planning_order.clear();
   vector<bool> closed(num_of_tasks, false);
   vector<bool> expanded(num_of_tasks, false);
@@ -381,6 +402,9 @@ bool PBS::topological_sort(vector<vector<int>> &adj_list, vector<int> &planning_
   }
 
   assert(planning_order.size() == num_of_tasks);
+  topology_sort_time += ((double)(clock() - topo_start_time) / CLOCKS_PER_SEC);
+  cout << "one topological sort time: " << ((double)(clock() - topo_start_time) / CLOCKS_PER_SEC) << endl;
+  
   return true;
 }
 
@@ -427,7 +451,7 @@ unordered_set<int> reachable_set(int source, vector<vector<int>> adj_list)
 //     cout << "########## preprocess :  delete dummy path : " << endl;
 //     if (ddmapd_instance)
 //     {
-//       cout << "dummy task global ID : " << pre_task_id << " agent " << agent << " task " << task - 1 << " length: " << pre_task_length << "  task start loc : " << search_engines[agent]->goal_location[task] << " end loc : " << search_engines[agent]->agent_segments[task].trajectory.back() << " parking loc : " << search_engines[agent]->instance.start_locations[agent] << endl;
+//       cout << "dummy task global ID : " << pre_task_id << " agent " << agent << " task " << task - 1 << " length: " << pre_task_length << "  previous task end : " << search_engines[agent]->goal_location[task] << " segment_end : " << search_engines[agent]->agent_segments[task].trajectory.back() << " parking loc : " << search_engines[agent]->instance.start_locations[agent] << endl;
 //       cout << "dummy segment traj: ";
 //       for (auto loc : search_engines[agent]->agent_segments[task - 1].trajectory)
 //       {
@@ -474,7 +498,7 @@ unordered_set<int> reachable_set(int source, vector<vector<int>> adj_list)
 
 
 
-void PBS::build_ct_with_dummypath(ConstraintTable &ct, int task_id, vector<vector<int>> adj_list_r)
+void PBS::build_ct_with_dummypath(ConstraintTable &ct, int task_id, vector<vector<int>> adj_list_r, vector<int>planned_tasks)
 {
 
   int curr_agent, curr_task;
@@ -488,13 +512,18 @@ void PBS::build_ct_with_dummypath(ConstraintTable &ct, int task_id, vector<vecto
   int agent, task;
   for (int i = 0; i < num_of_tasks; i++)
   {
-    if (high_prio_agents.find(i) != high_prio_agents.end())
+    if (high_prio_agents.find(i) != high_prio_agents.end()) // avoid collision with high priority agents
     {
       // int agent, task;
       tie(agent, task) = id2task[i];
       bool wait_at_goal = task == search_engines[agent]->goal_location.size() - 1;
       if (agent == curr_agent){
-        ct.addPath(*paths[i], wait_at_goal);
+        // exclude the last location of the path
+        auto temp = *paths[i];
+        if (!temp.path.empty()){ 
+          temp.path.pop_back();
+        }
+        ct.addPath(temp, wait_at_goal);
       }
       else{
         auto full_path = *paths[i];
@@ -504,6 +533,12 @@ void PBS::build_ct_with_dummypath(ConstraintTable &ct, int task_id, vector<vecto
 
       cout << "(" << agent << ", " << task << ") ";
     }
+    else if (std::find(planned_tasks.begin(), planned_tasks.end(), i) != planned_tasks.end()) // avoid collision with planned dummy path
+    {
+      /* code */
+      ct.addPath(*curr_dummy_paths[i], true);
+    }
+    
   }
   cout << endl;
   // cout << "soft cons: ";
@@ -519,7 +554,13 @@ void PBS::build_ct_with_dummypath(ConstraintTable &ct, int task_id, vector<vecto
   for (auto precedent : temporal_adj_list_r[task_id])
   {
     assert(!paths[precedent]->empty());
-    ct.length_min = max(ct.length_min, paths[precedent]->end_time() + 1);
+    tie(agent, task) = id2task[precedent];
+    if (agent == curr_agent){
+      ct.length_min = max(ct.length_min, paths[precedent]->end_time());
+    }else{
+      ct.length_min = max(ct.length_min, paths[precedent]->end_time());
+    }
+    cout << "precedent " << precedent << " agent " << agent << " task " << task << " ( curr_agent " <<  curr_agent << " curr_task " << curr_task << ") end time " << paths[precedent]->end_time() << " length_min " << ct.length_min << endl;
   }
   ct.latest_timestep = max(ct.latest_timestep, ct.length_min);
 }
@@ -729,52 +770,51 @@ bool PBS::generateChild(CBSNode *node, CBSNode *parent)
 {
 
   // debug TODO del debug
-  // vector<int> debug_id = {326, 229};
-  // if (ddmapd_instance)
-  // {
-  //   cout << "##### generateing child #####" << endl;
-  //   cout << "----------------- initial paths -----------------" << endl;
-  //   for (int i = 0; i < num_of_agents; i++)
-  //   {
-  //     for (int j = 0; j < search_engines[i]->goal_location.size(); j++)
-  //     {
-  //       if (debug_id.size() != 2 or (task2id({i, j}) != debug_id[0] and task2id({i, j}) != debug_id[1]))
-  //       {
-  //         continue;
-  //       }
-  //       {
-  //         continue;
-  //       }
-  //       if (paths[task2id({i, j})]->path.size() == 0 and curr_dummy_paths[task2id({i, j})]->path.size() == 0)
-  //       {
-  //         continue;
-  //       }
-  //       cout << "agent " << i << " task " << j << " task global ID : " << task2id({i, j}) << " path size : " << paths[task2id({i, j})]->path.size() << " dummy path size : " << curr_dummy_paths[task2id({i, j})]->path.size() << endl;
-  //       cout << "path : " << endl;
-  //       for (auto p : paths[task2id({i, j})]->path)
-  //       {
-  //         cout << p.location << " --> ";
-  //       }
-  //       cout << endl;
-  //       cout << "dummy path : " << endl;
-  //       for (auto p : curr_dummy_paths[task2id({i, j})]->path)
-  //       {
-  //         cout << p.location << " --> ";
-  //       }
-  //       cout << endl;
-  //     }
-  //   }
-  // }
+  vector<int> debug_id = {};
+  if (ddmapd_instance)
+  {
+    cout << "##### generateing child #####" << endl;
+    cout << "----------------- initial paths -----------------" << endl;
+    for (int i = 0; i < num_of_agents; i++)
+    {
+      for (int j = 0; j < search_engines[i]->goal_location.size(); j++)
+      {
+        if (paths[task2id({i, j})]->path.size() == 0 and curr_dummy_paths[task2id({i, j})]->path.size() == 0)
+        {
+          continue;
+        }
+        cout << "agent " << i << " task " << j << " task global ID : " << task2id({i, j}) << " path size : " << paths[task2id({i, j})]->path.size() << " dummy path size : " << curr_dummy_paths[task2id({i, j})]->path.size() << endl;
+        cout << "path : " << endl;
+        for (auto p : paths[task2id({i, j})]->path)
+        {
+          cout << p.location << " --> ";
+        }
+        cout << endl;
+        cout << "dummy path : " << endl;
+        for (auto p : curr_dummy_paths[task2id({i, j})]->path)
+        {
+          cout << p.location << " --> ";
+        }
+        cout << endl;
+      }
+    }
+  }
   // debug TODO del debug
-
+  branch_a_star_times = 0;
+  vector<int> planned_tasks;
+  clock_t part_b_start_time = clock();
   clock_t t1 = clock();
   node->parent = parent;
   vector<Path *> copy(paths);
   vector<Path *> dummy_copy(curr_dummy_paths);
   vector<vector<int>> adj_list, adj_list_r;
+  clock_t part_c_start = clock();
   get_adj_list(node, adj_list, adj_list_r);
+  cout << "part_c get_adj_list time: " << ((double)(clock() - part_c_start) / CLOCKS_PER_SEC) << endl;
+  part_c_time += ((double)(clock() - part_c_start) / CLOCKS_PER_SEC);
 
   // remove paths that are affected;
+  clock_t part_d_start = clock();
   auto affected_tasks = reachable_set(std::get<1>(node->constraints.front()), adj_list);
   for (auto task : affected_tasks)
   {
@@ -784,6 +824,14 @@ bool PBS::generateChild(CBSNode *node, CBSNode *parent)
     curr_dummy_paths[task] = &node->planned_dummy_paths.back().second;
     // cout << "affected task globalID : " << task << " paths[task] size : " << paths[task]->path.size() << " curr_dummy_paths[task] size : " << curr_dummy_paths[task]->path.size() << endl; // debug TODO del debug
   }
+  // initialize unaffected tasks to be in planned_tasks
+  for( int i = 0; i < num_of_tasks; i++){
+    if (affected_tasks.find(i) == affected_tasks.end() && paths[i] != nullptr && !paths[i]->empty()){
+      planned_tasks.push_back(i);
+    }
+  }
+  cout << "part_d remove paths time: " << ((double)(clock() - part_d_start) / CLOCKS_PER_SEC) << endl;
+  part_d_time += ((double)(clock() - part_d_start) / CLOCKS_PER_SEC);
   // if (ddmapd_instance)
   // {
   //   AddDummyPathToAllLastTask(paths);
@@ -843,7 +891,6 @@ bool PBS::generateChild(CBSNode *node, CBSNode *parent)
     tie(agent, task) = id2task[i];
     if (paths[i]->empty()) // only replan the affected tasks
     { 
-      cout << "replanning " << i << endl;
       int start_time = 0;
 
       if (task != 0)
@@ -852,17 +899,37 @@ bool PBS::generateChild(CBSNode *node, CBSNode *parent)
         start_time = paths[task2id({agent, task - 1})]->end_time();
       }
 
-      cout << "plan for " << agent << "(" << task << ")" <<  " global ID : " << i <<  endl;
+      cout << "############################  plan for " << agent << "(" << task << ")" <<  " global ID : " << i ;
+      if (ddmapd_instance){
+        cout <<  " segment start " << search_engines[agent]->goal_location[task] << " segment end " << search_engines[agent]->agent_segments[task].trajectory.back() << " parking loc " << search_engines[agent]->instance.start_locations[agent];
+      }
+      cout << endl;
 
+      // debug TODO del
+      if (i == 243 or i == 244){
+        search_engines[agent]->debug_agent = i;
+        cout << "---- task_locVal ------" << endl;
+        for (int p = 0; p < task_locVal[i].size(); p++){
+          cout << "loc " << p << " val " << task_locVal[i][p] << endl;
+        }
+      }else{
+        search_engines[agent]->debug_agent = -1;
+      }
+
+      clock_t part_e_start = clock();
       if (ddmapd_instance)
       {
-        build_ct_with_dummypath(ct, i, adj_list_r);
+        build_ct_with_dummypath(ct, i, adj_list_r, planned_tasks);
       }
       else
       {
         build_ct(ct, i, adj_list_r);
       }
+      cout << " earlist start time (ct.length_min) : " << ct.length_min << endl;
+      cout << "part_e build_ct time: " << ((double)(clock() - part_e_start) / CLOCKS_PER_SEC) << endl;
+      part_e_time += ((double)(clock() - part_e_start) / CLOCKS_PER_SEC);
 
+      
       bool reuse_old_path = false;
       AddDummyPathToLastTask(*copy[i], *dummy_copy[i]);
       if (copy[i]->begin_time == start_time && copy[i]->end_time() >= ct.length_min)
@@ -900,6 +967,9 @@ bool PBS::generateChild(CBSNode *node, CBSNode *parent)
         }
       }
       remove_dummy_path(dummy_copy[i]->path.size(), *copy[i]);
+      
+
+
       if (reuse_old_path)
       {
         cout << "reuse old path" << endl;
@@ -908,11 +978,30 @@ bool PBS::generateChild(CBSNode *node, CBSNode *parent)
       }
       else
       {
+        clock_t part_f_start = clock();
+        CalculateTaskStartTime(node->constraints);
+        cout << "part_f CalculateTaskStartTime time: " << ((double)(clock() - part_f_start) / CLOCKS_PER_SEC) << endl;
+        part_f_time += ((double)(clock() - part_f_start) / CLOCKS_PER_SEC);
         if (ddmapd_instance)
         {
-          *paths[i] = search_engines[agent]->findPathSegmentToPark(ct, start_time, task, 0);
-          updateDummyPath(*paths[i], *curr_dummy_paths[i], search_engines[agent]->dummy_path_len);
-          remove_dummy_path(curr_dummy_paths[i]->path.size(), *paths[i]);
+          if (dummy_avoid){
+            *paths[i] = search_engines[agent]->findPathSegmentToParkWithTrajAvoid(ct, start_time, task, 0, task_locVal[i]);
+            if (search_engines[agent]->timeout){
+               *paths[i] = search_engines[agent]->findPathSegmentToPark(ct, start_time, task, 0); 
+            }
+          }else{
+            *paths[i] = search_engines[agent]->findPathSegmentToPark(ct, start_time, task, 0);
+          }
+
+          num_LL_expanded += search_engines[agent]->num_expanded;
+          a_star_runtime += search_engines[agent]->findPathSegmentToPark_time;
+          branch_a_star_times += 1;
+          cout << "one a_star runtime " << search_engines[agent]->findPathSegmentToPark_time << endl;
+          if (!paths[i]->empty()){
+            updateDummyPath(*paths[i], *curr_dummy_paths[i], search_engines[agent]->dummy_path_len);
+            remove_dummy_path(curr_dummy_paths[i]->path.size(), *paths[i]);
+          }
+          
         }
         else
         {
@@ -920,29 +1009,29 @@ bool PBS::generateChild(CBSNode *node, CBSNode *parent)
         }
       }
       // debug TODO del debug
-      // if (ddmapd_instance)
-      // {
-      //   cout << "########## generated child node path: " << endl;
-      //   cout << "task global ID : " << i << " task start loc : " << search_engines[agent]->goal_location[task] << " end loc : " << search_engines[agent]->agent_segments[task].trajectory.back() << " parking loc : " << search_engines[agent]->instance.start_locations[agent] << endl;
-      //   cout << "segment traj: ";
-      //   for (auto loc : search_engines[agent]->agent_segments[task].trajectory)
-      //   {
-      //     cout << loc << " ";
-      //   }
-      //   cout << endl;
-      //   cout << "path: ";
-      //   for (auto p : paths[i]->path)
-      //   {
-      //     cout << p.location << " --> ";
-      //   }
-      //   cout << endl;
-      //   cout << "dummy path: ";
-      //   for (auto p : curr_dummy_paths[i]->path)
-      //   {
-      //     cout << p.location << " --> ";
-      //   }
-      //   cout << endl;
-      // }
+      if (ddmapd_instance)
+      {
+        cout << "generated child node path: " << endl;
+        cout << "task global ID : " << i << " previous task end : " << search_engines[agent]->goal_location[task] << " segment_end : " << search_engines[agent]->agent_segments[task].trajectory.back() << " parking loc : " << search_engines[agent]->instance.start_locations[agent] << endl;
+        cout << "segment traj: ";
+        for (auto loc : search_engines[agent]->agent_segments[task].trajectory)
+        {
+          cout << loc << " ";
+        }
+        cout << endl;
+        cout << "path: ";
+        for (auto p : paths[i]->path)
+        {
+          cout << p.location << " --> ";
+        }
+        cout << endl;
+        cout << "dummy path: ";
+        for (auto p : curr_dummy_paths[i]->path)
+        {
+          cout << p.location << " --> ";
+        }
+        cout << endl;
+      }
       // debug TODO del debug
 
       if (paths[i]->empty())
@@ -950,56 +1039,64 @@ bool PBS::generateChild(CBSNode *node, CBSNode *parent)
         cout << "No path exists for agent " << agent << "(" << task << ")" << endl;
         return false;
       }
+      planned_tasks.push_back(i);
     }
 
+    clock_t part_g_start = clock();
     auto high_prio_agents = reachable_set(i, adj_list_r);
     high_prio_agents.erase(i);
-    for (auto j : high_prio_agents) // should not have conflict with higher-priority tasks
-    {
-      bool is_conf = (ddmapd_instance) ? findOneConflictWithDummyPath(i, j) : findOneConflict(i, j);
-      if (is_conf)
-      {
-        cout << "between " << i << " and " << j << endl;
-        // debug TODO del debug
-        // if (ddmapd_instance){
-        //   cout << "path for task globalID : " << i << " path size : " << paths[i]->path.size() << " dummy path size : " << curr_dummy_paths[i]->path.size() << endl;
-        //   cout << "path : " << endl;
-        //   for (auto p : paths[i]->path)
-        //   {
-        //     cout << p.location << " --> ";
-        //   }
-        //   cout << endl;
-        //   cout << "dummy path : " << endl;
-        //   for (auto p : curr_dummy_paths[i]->path)
-        //   {
-        //     cout << p.location << " --> ";
-        //   }
-        //   cout << endl;
+    // for (auto j : high_prio_agents) // should not have conflict with higher-priority tasks
+    // {
+    //   bool is_conf = (ddmapd_instance) ? findOneConflictWithDummyPath(i, j) : findOneConflict(i, j);
+    //   if (is_conf)
+    //   {
+    //     cout << "between " << i << " and " << j << endl;
+    //     // debug TODO del debug
+    //     // if (ddmapd_instance){
+    //     //   cout << "path for task globalID : " << i << " path size : " << paths[i]->path.size() << " dummy path size : " << curr_dummy_paths[i]->path.size() << endl;
+    //     //   cout << "path : " << endl;
+    //     //   for (auto p : paths[i]->path)
+    //     //   {
+    //     //     cout << p.location << " --> ";
+    //     //   }
+    //     //   cout << endl;
+    //     //   cout << "dummy path : " << endl;
+    //     //   for (auto p : curr_dummy_paths[i]->path)
+    //     //   {
+    //     //     cout << p.location << " --> ";
+    //     //   }
+    //     //   cout << endl;
 
           
-        //   cout << "path for task globalID : " << j << " path size : " << paths[j]->path.size() << " dummy path size : " << curr_dummy_paths[j]->path.size() << endl;
-        //   cout << "path : " << endl;
-        //   for (auto p : paths[j]->path)
-        //   {
-        //     cout << p.location << " --> ";
-        //   }
-        //   cout << endl;
-        //   cout << "dummy path : " << endl;
-        //   for (auto p : curr_dummy_paths[j]->path)
-        //   {
-        //     cout << p.location << " --> ";
-        //   }
-        //   cout << endl;
-        // }
-        // debug TODO del debug
+    //     //   cout << "path for task globalID : " << j << " path size : " << paths[j]->path.size() << " dummy path size : " << curr_dummy_paths[j]->path.size() << endl;
+    //     //   cout << "path : " << endl;
+    //     //   for (auto p : paths[j]->path)
+    //     //   {
+    //     //     cout << p.location << " --> ";
+    //     //   }
+    //     //   cout << endl;
+    //     //   cout << "dummy path : " << endl;
+    //     //   for (auto p : curr_dummy_paths[j]->path)
+    //     //   {
+    //     //     cout << p.location << " --> ";
+    //     //   }
+    //     //   cout << endl;
+    //     // }
+    //     // debug TODO del debug
 
 
-      }
-      assert(!is_conf);
-    }
+    //   }
+    //   assert(!is_conf);
+    // }
+    
+    
+    
+    // cout << "part_g check higher-priority conflict time: " << ((double)(clock() - part_g_start) / CLOCKS_PER_SEC) << endl;
+    part_g_time += ((double)(clock() - part_g_start) / CLOCKS_PER_SEC);
 
     bool conflict_found = false;
 
+    clock_t part_h_start = clock();
     for (auto j : planning_order) // check if there is conflict with same-priority tasks
     {
       if (i == j)
@@ -1021,8 +1118,10 @@ bool PBS::generateChild(CBSNode *node, CBSNode *parent)
         }
       }
     }
+    // cout << "part_h check same-priority conflict time: " << ((double)(clock() - part_h_start) / CLOCKS_PER_SEC) << endl;
+    part_h_time += ((double)(clock() - part_h_start) / CLOCKS_PER_SEC);
 
-    num_LL_expanded += search_engines[agent]->num_expanded;
+    
     num_LL_generated += search_engines[agent]->num_generated;
 
     if (conflict_found)
@@ -1084,8 +1183,9 @@ bool PBS::generateChild(CBSNode *node, CBSNode *parent)
   // }
   // // debug TODO del debug
 
+  clock_t part_i_start = clock();
   if (pbs_heuristic == 1)
-  {
+  { 
     node->g_val = 0;
     for (int i = 0; i < num_of_agents; i++)
     {
@@ -1101,9 +1201,10 @@ bool PBS::generateChild(CBSNode *node, CBSNode *parent)
         g_i = paths[task_id]->end_time();
         if (j + 1 < search_engines[i]->goal_location.size())
         {
+          // g_i += search_engines[i]->heuristic_landmark[j + 1];
           if (ddmapd_instance)
           {
-            g_i = g_i + search_engines[i]->heuristic_landmark[j + 1] + search_engines[i]->agent_segments[j].trajectory.size() - 1;
+            g_i = g_i + search_engines[i]->heuristic_landmark[j + 1] + search_engines[i]->agent_segments[j+1].trajectory.size() - 1;
           }
           else
           {
@@ -1145,16 +1246,24 @@ bool PBS::generateChild(CBSNode *node, CBSNode *parent)
       }
     }
 
-    node->g_val = minimumCompletionTime(num_tasks, priority, earliest_start_time);
+    node->g_val = earlistCompletionTime(num_tasks, priority, earliest_start_time);
   }
   // compute g
+  cout << "part_i compute child node g time: " << ((double)(clock() - part_i_start) / CLOCKS_PER_SEC) << endl;
+  part_i_time += ((double)(clock() - part_i_start) / CLOCKS_PER_SEC);
+  cout << "part_b generate child time: " << ((double)(clock() - part_b_start_time) / CLOCKS_PER_SEC) << endl;
+  part_b_time += ((double)(clock() - part_b_start_time) / CLOCKS_PER_SEC);
 
+  cout << "new child g_val: " << node->g_val << endl;
   runtime_generate_child += (double)(clock() - t1) / CLOCKS_PER_SEC;
   return true;
 }
 
 bool PBS::generateRoot()
 {
+  
+  branch_a_star_times = 0;
+  vector<int>planned_tasks;
   dummy_start = new CBSNode();
   dummy_start->g_val = 0;
   paths.resize(num_of_tasks, nullptr);
@@ -1163,6 +1272,7 @@ bool PBS::generateRoot()
   {
     dummy_start->constraints.push_back(con);
   }
+  CalculateTaskStartTime(dummy_start->constraints);
   vector<vector<int>> adj_list, adj_list_r;
   get_adj_list(dummy_start, adj_list, adj_list_r);
   get_adj_list(dummy_start, temporal_adj_list, temporal_adj_list_r);
@@ -1201,7 +1311,7 @@ bool PBS::generateRoot()
 
     if (ddmapd_instance)
     { 
-    build_ct_with_dummypath(ct, i, adj_list_r); 
+    build_ct_with_dummypath(ct, i, adj_list_r, planned_tasks); 
     }
     else
     {
@@ -1210,35 +1320,54 @@ bool PBS::generateRoot()
 
     if (ddmapd_instance)
     {
-      paths_found_initially[i] = search_engines[agent]->findPathSegmentToPark(ct, start_time, task, 0);
-      updateDummyPath(paths_found_initially[i], dummy_paths_found_initially[i], search_engines[agent]->dummy_path_len);
-      remove_dummy_path(dummy_paths_found_initially[i].path.size(), paths_found_initially[i]);
+      if (dummy_avoid){
+        paths_found_initially[i] = search_engines[agent]->findPathSegmentToParkWithTrajAvoid(ct, start_time, task, 0, task_locVal[i]);
+        if (search_engines[agent]->timeout){
+          paths_found_initially[i] = search_engines[agent]->findPathSegmentToPark(ct, start_time, task, 0);
+        }
+      }else{
+        paths_found_initially[i] = search_engines[agent]->findPathSegmentToPark(ct, start_time, task, 0);
+      }
+      num_LL_expanded += search_engines[agent]->num_expanded;
+      branch_a_star_times += 1;
+      a_star_runtime += search_engines[agent]->findPathSegmentToPark_time;
+      if (!paths_found_initially[i].empty()){
+        updateDummyPath(paths_found_initially[i], dummy_paths_found_initially[i], search_engines[agent]->dummy_path_len);
+        remove_dummy_path(dummy_paths_found_initially[i].path.size(), paths_found_initially[i]);
+      }else{
+        int debug = 1; // TODO del
+      }
       // debug TODO del debug
+      if (i==743){
+          int debug = 1;
 
-      // if (ddmapd_instance)
-      // {
-      //   cout << "###### generate root" << endl;
-      //   cout << "agent: " << agent << " task: " << task << " task global ID : " << i << " task start loc : " << search_engines[agent]->goal_location[task] << " end loc : " << search_engines[agent]->agent_segments[task].trajectory.back() << " parking loc : " << search_engines[0]->instance.start_locations[agent] << endl;
-      //   cout << "segment traj: ";
-      //   for (auto loc : search_engines[agent]->agent_segments[task].trajectory)
-      //   {
-      //     cout << loc << " ";
-      //   }
-      //   cout << endl;
-      //   cout << "paths_found_initially: " << "length: " << paths_found_initially[i].size() << endl;
-      //   for (auto p : paths_found_initially[i].path)
-      //   {
-      //     cout << p.location << " --> ";
-      //   }
-      //   cout << endl;
+      }
 
-      //   cout << "dummy_paths_found_initially :" << "length: " << dummy_paths_found_initially[i] << endl;
-      //   for (int j = 0; j < dummy_paths_found_initially[i].path.size(); j++)
-      //   {
-      //     cout << dummy_paths_found_initially[i].path[j].location << " --> ";
-      //   }
-      //   cout << endl;
-      // }
+      if (ddmapd_instance)
+      {
+        cout << "###### generate root" << endl;
+        cout << "agent: " << agent << " task: " << task << " task global ID : " << i << " previous task end : " << search_engines[agent]->goal_location[task] << " segment_end : " << search_engines[agent]->agent_segments[task].trajectory.back() << " parking loc : " << search_engines[0]->instance.start_locations[agent] ;
+        cout << " earlist start time : " << ct.getHoldingTime() << endl;
+        cout << "segment traj: ";
+        for (auto loc : search_engines[agent]->agent_segments[task].trajectory)
+        {
+          cout << loc << " ";
+        }
+        cout << endl;
+        cout << "paths_found_initially: " << "length: " << paths_found_initially[i].size() << endl;
+        for (auto p : paths_found_initially[i].path)
+        {
+          cout << p.location << " --> ";
+        }
+        cout << endl;
+
+        cout << "dummy_paths_found_initially :" << "length: " << dummy_paths_found_initially[i].size() << endl;
+        for (int j = 0; j < dummy_paths_found_initially[i].path.size(); j++)
+        {
+          cout << dummy_paths_found_initially[i].path[j].location << " --> ";
+        }
+        cout << endl;
+      }
 
       // debug TODO debug and print the path
     }
@@ -1289,13 +1418,14 @@ bool PBS::generateRoot()
 
     // dummy_start->makespan = max(dummy_start->makespan, paths_found_initially[i].size() - 1);
     // dummy_start->g_val += (int) paths_found_initially[i].size() - 1;
-    num_LL_expanded += search_engines[agent]->num_expanded;
+    
     num_LL_generated += search_engines[agent]->num_generated;
 
     if (conflict_found)
     {
       break;
     }
+    planned_tasks.push_back(i);
   }
 
   for (int i = 0; i < num_of_tasks; i++)
@@ -1304,47 +1434,47 @@ bool PBS::generateRoot()
     curr_dummy_paths[i] = &dummy_paths_found_initially[i];
   }
 
-  // debug TODO del debug
-  cout << "------------------------------- Generate Root Result Paths : -------------------------------" << endl;
-  if (ddmapd_instance)
-  {
-    for (int i = 0; i < num_of_tasks; i++)
-    {
-      if (paths[i]->empty())
-      {
-        if (!curr_dummy_paths[i]->empty())
-        {
-          cout << "ATTENTION paths[i]->empty() but curr_dummy_paths[i] is not empty" << endl;
-          cout << "task " << i << " path size: " << curr_dummy_paths[i]->size() << " path end time: " << curr_dummy_paths[i]->end_time() << endl;
-          for (auto p : curr_dummy_paths[i]->path)
-          {
-            cout << p.location << " --> ";
-          }
-          cout << endl;
-        }
-      }
-      else
-      {
-        if (paths[i]->path.size() > curr_dummy_paths[i]->path.size())
-        {
-          cout << "ATTENTION paths[i]->path.size() > curr_dummy_paths[i]->path.size()" << " path size: " << paths[i]->size() << " dummy path size: " << curr_dummy_paths[i]->size() << endl;
-        }
-        cout << "ROOT paths" << endl;
-        for (int j = 0; j < paths[i]->path.size(); j++)
-        {
-          cout << paths[i]->path[j].location << " --> ";
-        }
-        cout << endl;
-        cout << "ROOT dummy paths" << endl;
-        for (int j = 0; j < curr_dummy_paths[i]->path.size(); j++)
-        {
-          cout << curr_dummy_paths[i]->path[j].location << " --> ";
-        }
-        cout << endl;
-      }
-    }
-  }
-  // debug TODO del debug
+  // // debug TODO del debug
+  // cout << "------------------------------- Generate Root Result Paths : -------------------------------" << endl;
+  // if (ddmapd_instance)
+  // {
+  //   for (int i = 0; i < num_of_tasks; i++)
+  //   {
+  //     if (paths[i]->empty())
+  //     {
+  //       if (!curr_dummy_paths[i]->empty())
+  //       {
+  //         cout << "ATTENTION paths[i]->empty() but curr_dummy_paths[i] is not empty" << endl;
+  //         cout << "task " << i << " path size: " << curr_dummy_paths[i]->size() << " path end time: " << curr_dummy_paths[i]->end_time() << endl;
+  //         for (auto p : curr_dummy_paths[i]->path)
+  //         {
+  //           cout << p.location << " --> ";
+  //         }
+  //         cout << endl;
+  //       }
+  //     }
+  //     else
+  //     {
+  //       if (paths[i]->path.size() > curr_dummy_paths[i]->path.size())
+  //       {
+  //         cout << "ATTENTION paths[i]->path.size() > curr_dummy_paths[i]->path.size()" << " path size: " << paths[i]->size() << " dummy path size: " << curr_dummy_paths[i]->size() << endl;
+  //       }
+  //       cout << "ROOT paths" << endl;
+  //       for (int j = 0; j < paths[i]->path.size(); j++)
+  //       {
+  //         cout << paths[i]->path[j].location << " --> ";
+  //       }
+  //       cout << endl;
+  //       cout << "ROOT dummy paths" << endl;
+  //       for (int j = 0; j < curr_dummy_paths[i]->path.size(); j++)
+  //       {
+  //         cout << curr_dummy_paths[i]->path[j].location << " --> ";
+  //       }
+  //       cout << endl;
+  //     }
+  //   }
+  // }
+  // // debug TODO del debug
 
   // generate dummy start and update data structures
   dummy_start->h_val = 0;
@@ -1419,7 +1549,7 @@ bool PBS::generateRoot()
       }
     }
 
-    dummy_start->g_val = minimumCompletionTime(num_tasks, priority, earliest_start_time);
+    dummy_start->g_val = earlistCompletionTime(num_tasks, priority, earliest_start_time);
   }
   allNodes_table.push_back(dummy_start);
   // compute g
@@ -1454,6 +1584,8 @@ bool PBS::solve(double time_limit, int cost_lowerbound, int cost_upperbound)
   }
 
   generateRoot();
+  sum_a_star_times += branch_a_star_times;
+  cout << "Root " << " branch_a_star_times " << branch_a_star_times << endl;
   if (dummy_start->is_solution)
   {
     solution_found = true;
@@ -1462,6 +1594,9 @@ bool PBS::solve(double time_limit, int cost_lowerbound, int cost_upperbound)
     goal_node = dummy_start;
   }
 
+  
+
+  // dfs_stack_t dfs_stack;
   std::stack<CBSNode *> dfs_stack;
   dfs_stack.push(dummy_start);
 
@@ -1481,9 +1616,24 @@ bool PBS::solve(double time_limit, int cost_lowerbound, int cost_upperbound)
       solution_found = false;
       break;
     }
+
+    // debug TODO del
+    auto temp_stack = dfs_stack;
+    cout << "-------------- dfs_stack ----------- " << endl;
+
+    // Print the elements of the stack
+    while (!temp_stack.empty()) {
+        CBSNode* node = temp_stack.top();
+        std::cout << " stack node h-val " << node->h_val << " g-val " << node->g_val << std::endl;
+        temp_stack.pop();
+    }
+    cout << "-------------------------------------------- " << endl;
+    // debug TODO del
+
     CBSNode *curr = dfs_stack.top();
     cout << "pop h-val " << curr->h_val << " g-val " << curr->g_val << endl;
     dfs_stack.pop();
+    
     // open_list.erase(curr->open_handle);
     // takes the paths_found_initially and UPDATE all constrained paths found for agents from curr to dummy_start (and lower-bounds)
     if (ddmapd_instance)
@@ -1516,7 +1666,8 @@ bool PBS::solve(double time_limit, int cost_lowerbound, int cost_upperbound)
     bool solved[2] = {false, false};
     vector<Path *> copy(paths);
     vector<Path *> dummy_copy(curr_dummy_paths);
-
+    
+    
     for (int i = 0; i < 2; i++)
     {
       if (i > 0)
@@ -1559,14 +1710,17 @@ bool PBS::solve(double time_limit, int cost_lowerbound, int cost_upperbound)
       //   }
       // }
       // // debug TODO del debug
-
+      
       solved[i] = generateChild(child[i], curr);
+      cout << "child "<< " g-val " << child[i]->g_val << " h-val " << child[i]->h_val << " branch_a_star_times " << branch_a_star_times << endl;
+      sum_a_star_times += branch_a_star_times;
       if (!solved[i])
       {
         cout << "gen child " << i << " failed" << endl;
         delete child[i];
         continue;
       }
+      clock_t part_a_start = clock();
       if (child[i]->is_solution) // no conflicts
       {                          // found a solution (and finish the while look)
         solution_found = true;
@@ -1575,7 +1729,7 @@ bool PBS::solve(double time_limit, int cost_lowerbound, int cost_upperbound)
         if (ddmapd_instance)
         {
           updatePathsWithDummyPaths(child[i]); // update the current solution
-          AddDummyPathToAllLastTask(paths);
+          // AddDummyPathToAllLastTask(paths); // TODO add back
         }
         else
         {
@@ -1584,6 +1738,8 @@ bool PBS::solve(double time_limit, int cost_lowerbound, int cost_upperbound)
         join_paths();
         break;
       }
+      cout << "part_a path update " << (double)(clock() - part_a_start) / CLOCKS_PER_SEC << endl;
+      part_a_time += (double)(clock() - part_a_start) / CLOCKS_PER_SEC;
     }
 
     for (int i = 0; i < 2; i++)
@@ -1673,7 +1829,7 @@ int PBS::get_task_distance(int start_taskID, int end_taskID) // ID is the global
   if (ddmapd_instance)
   {
     int traj_end = search_engines[start_agent]->agent_segments[start_task].trajectory.back();
-    return search_engines[start_agent]->instance.getManhattanDistance(traj_end, end_goal_loc) + search_engines[start_agent]->agent_segments[start_task].trajectory.size() - 1;
+    return search_engines[start_agent]->agent_segments[start_task].trajectory.size() - 1 + search_engines[start_agent]->instance.getManhattanDistance(traj_end, end_goal_loc);
   }
   else
   {
@@ -1681,7 +1837,8 @@ int PBS::get_task_distance(int start_taskID, int end_taskID) // ID is the global
   }
 }
 
-int PBS::minimumCompletionTime(int num_tasks, vector<pair<int, int>> &priority, vector<int> &earliest_start_time)
+// earliest_start_time is the earliest start time baed on current planned path, if unplanned, it is 0
+int PBS::earlistCompletionTime(int num_tasks, vector<pair<int, int>> &priority, vector<int> &earliest_start_time)
 {
   // Step 1: Build the graph and calculate in-degrees for topological sort
   vector<vector<int>> graph(num_tasks); // Adjacency list for the graph
@@ -1705,7 +1862,7 @@ int PBS::minimumCompletionTime(int num_tasks, vector<pair<int, int>> &priority, 
     if (in_degree[i] == 0)
     {
       q.push(i);
-      completion_time[i] = earliest_start_time[i]; // Start at its earliest start time
+     completion_time[i] = earliest_start_time[i]; // Start at its earliest start time
     }
   }
 
@@ -1723,9 +1880,9 @@ int PBS::minimumCompletionTime(int num_tasks, vector<pair<int, int>> &priority, 
     {
       // Calculate the earliest time `next` can start based on `current`
 
-      completion_time[next] = max({
-          completion_time[next],                                       // Current completion time of `next`
-          completion_time[current] + get_task_distance(current, next), // Completion time of `current` + distance
+     completion_time[next] = max({
+         completion_time[next],                                       // Current completion time of `next`
+         completion_time[current] + get_task_distance(current, next), // Completion time of `current` + distance
           earliest_start_time[next]                                    // Earliest start time of `next`
       });
 
@@ -1743,7 +1900,18 @@ int PBS::minimumCompletionTime(int num_tasks, vector<pair<int, int>> &priority, 
     cout << "Cycle detected in task dependencies!" << endl;
   }
 
-  // Step 4: Find the maximum completion time
+  // Step 4: get the completion time from completion_time and trajectory length for dd-mapd instance
+  if (ddmapd_instance)
+  {
+    for (int i = 0; i < num_tasks; ++i)
+    {
+      int agent, task;
+      tie(agent, task) = id2task[i];
+      completion_time[i] += search_engines[agent]->agent_segments[task].trajectory.size() - 1;
+    }
+  }
+
+  // Step 5: Find the maximum completion time
   int total_time = 0;
   for (int i = 0; i < num_tasks; ++i)
   {
@@ -1751,12 +1919,175 @@ int PBS::minimumCompletionTime(int num_tasks, vector<pair<int, int>> &priority, 
     total_time = max(total_time, completion_time[i]);
   }
 
+
+  
+
   return total_time;
 }
 
+
+
+void PBS::CalculateTaskStartTime(list<Constraint>  & constraints)
+{
+ 
+  
+  int num_tasks = id2task.size();
+
+  for (int i = 0; i < num_of_tasks; i++){
+    task_locVal[i].resize(map_size, 0);
+  }
+
+  // initialize priorities
+  vector<pair<int, int>> priority; // {a, x} a should be done before x
+  for (auto con : constraints)
+  {
+    int a, x, y, t;
+    constraint_type type;
+    tie(a, x, y, t, type) = con;
+    if (type == constraint_type::GPRIORITY)
+    {
+      priority.push_back({a, x}); // <id_from, id_to, -1, -1, GPRIORITY>: used for PBS
+    }
+  }
+
+  // initialize earliest_start_time
+  vector<int> earliest_start_time;
+  for (int task_id = 0; task_id < num_tasks; task_id++)
+  {
+    if (paths[task_id]!=nullptr and !paths[task_id]->empty())
+    {
+      earliest_start_time.push_back(paths[task_id]->end_time());
+    }
+    else
+    {
+      earliest_start_time.push_back(0);
+    }
+  }
+
+  std::unordered_map<int, std::vector<int>> estStart_task;
+  // Step 1: Build the graph and calculate in-degrees for topological sort
+  vector<vector<int>> graph(num_tasks); // Adjacency list for the graph
+  vector<int> in_degree(num_tasks, 0);  // In-degree (number of incoming edges) for each task
+
+  for (const auto &p : priority) // priority is the global ID
+  {
+    int task_a = p.first;
+    int task_b = p.second;
+    graph[task_a].push_back(task_b); // Add edge from task_a to task_b
+    in_degree[task_b]++;             // Increment in-degree of task_b
+  }
+
+  // Step 2: Initialize the queue for topological sorting
+  std::queue<int> q;
+  vector<int> start_time(num_tasks, 0); // Completion time for each task
+
+  // Enqueue tasks with no dependencies (in-degree == 0)
+  for (int i = 0; i < num_tasks; ++i)
+  {
+    if (in_degree[i] == 0)
+    {
+      q.push(i);
+     start_time[i] = earliest_start_time[i]; // Start at its earliest start time
+    }
+  }
+
+  int visited_count = 0; // To detect cycles
+
+  // Step 3: Process the tasks in topological order
+  while (!q.empty())
+  {
+    int current = q.front();
+    q.pop();
+    visited_count++;
+
+    // Traverse all tasks dependent on the current task
+    for (int next : graph[current])
+    {
+      // Calculate the earliest time `next` can start based on `current`
+
+     start_time[next] = max({
+         start_time[next],                                       // Current completion time of `next`
+         start_time[current] + get_task_distance(current, next), // Completion time of `current` + distance
+          earliest_start_time[next]                                    // Earliest start time of `next`
+      });
+
+      // Decrement the in-degree and enqueue if it becomes 0
+      if (--in_degree[next] == 0)
+      {
+        q.push(next);
+      }
+    }
+  }
+
+  // Detect cycle: If not all tasks are visited
+  if (visited_count != num_tasks)
+  {
+    cout << "Cycle detected in task dependencies!" << endl;
+  }
+
+  for (int i = 0; i < num_tasks; ++i)
+  {
+    estStart_task[start_time[i]].push_back(i);
+  }
+
+  // Step 4: get the completion time from completion_time and trajectory length for dd-mapd instance
+  std::unordered_map<int, std::vector<int>> estStart_locs;
+  for (auto one_task_info : estStart_task)
+  {
+    int est_start_time = one_task_info.first;
+    for (auto task_id : one_task_info.second)
+    {
+      int agent, task;
+      tie(agent, task) = id2task[task_id];
+      int offset_t = 0;
+      for (int loc : search_engines[agent]->agent_segments[task].trajectory)
+      {
+        estStart_locs[est_start_time+offset_t].push_back(loc);
+        offset_t++;
+      }
+    }
+  }
+  // TODO can be improved to excude the segment of itself 
+  for (int i = 0; i < num_tasks; i++)
+  {
+    int task_start = start_time[i];
+    int start_time = max(0, task_start - task_gap_threshold);
+    int agent, task;
+    tie(agent, task) = id2task[i];
+    int end_time = task_start + search_engines[agent]->agent_segments[task].trajectory.size();
+    end_time = min(end_time, task_start + task_gap_threshold);
+    double relevant_index = 1;
+    for (int t = start_time; t < end_time; t++)
+    {
+      if (estStart_locs.find(t) == estStart_locs.end()) // if not trajectory on this time 
+      {
+        continue;
+      }
+      for (int loc : estStart_locs[t])
+      {
+        double localVal;
+        if (t == task_start)
+        {
+          localVal = locVal_offset;
+        }
+        else
+        {
+          localVal = locVal_offset / (double)abs(t - task_start); 
+        }
+        task_locVal[i][loc] += localVal;
+        // task_locVal[i][loc] = max(task_locVal[i][loc], (int)localVal);
+      }
+    }
+    
+  }
+
+}
+
+
 void PBS::updateDummyPath(Path &curr_path, Path &dummy_path, int &dummy_path_length)
 {
-  int start_idx = curr_path.size() - dummy_path_length;
+  
+  int start_idx = curr_path.size() - dummy_path_length; 
   dummy_path.path.clear();
   dummy_path.path.resize(dummy_path_length);
 
@@ -1764,6 +2095,8 @@ void PBS::updateDummyPath(Path &curr_path, Path &dummy_path, int &dummy_path_len
   {
     dummy_path.path[i - start_idx] = curr_path.path[i];
   }
+  dummy_path.begin_time = curr_path.begin_time + start_idx;
+  
 }
 
 int PBS::get_previous_taskID(int current_global_ID)
@@ -1805,7 +2138,5 @@ void PBS::AddDummyPathToLastTask(Path &path, Path &dummy_path)
   {
     path.path.push_back(dummy_path[i]);
   }
-
-
 
 }

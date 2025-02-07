@@ -48,6 +48,7 @@ struct PathEntry
 	// bool single = false;
 	int mdd_width;  // TODO:: Myabe this can be deleted as we always build/look for MDDs when we classify conflicts
   bool is_goal;
+  int task = -1;
 
 	bool is_single() const
 	{
@@ -60,6 +61,8 @@ struct PathEntry
 
 struct Path{
   int begin_time = 0;
+  int agent;
+  int task;
   int end_time(){
     return begin_time + size() - 1;
   }

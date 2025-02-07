@@ -18,13 +18,14 @@ int main(int argc, char** argv)
 	desc.add_options()
 		("help", "produce help message")
 		("pbs_heuristic", po::value<int>()->default_value(1), "(1) cost (2) makespan")
+		("dummy_avoid", po::value<bool>()->default_value(true), "whether to let dummy path avoid segment trajectory, only used in DD-MAPD instance")
 		("assignment_folder,f", po::value<string>()->default_value(""), "path to folder that contains the assignment files")
 		// params for the input instance and experiment settings
 		("map,m", po::value<string>()->default_value(""), "input file for map")
 		("agents,a", po::value<string>()->default_value(""), "input file for agents")
 		("output,o", po::value<string>(), "output file for schedule")
 		("agentNum,k", po::value<int>()->default_value(0), "number of agents")
-		("cutoffTime,t", po::value<double>()->default_value(7200), "cutoff time (seconds)")
+		("cutoffTime,t", po::value<double>()->default_value(72000), "cutoff time (seconds)")
 		("screen,s", po::value<int>()->default_value(2), "screen option (0: none; 1: results; 2:all)")
 		("seed,d", po::value<int>()->default_value(0), "random seed")
 		// params for instance generators
@@ -69,6 +70,7 @@ int main(int argc, char** argv)
 	//////////////////////////////////////////////////////////////////////
 	// initialize the solver
 	PBS pbs(instance, vm["screen"].as<int>());
+	pbs.dummy_avoid = vm["dummy_avoid"].as<bool>();
 	pbs.set_heuristic(vm["pbs_heuristic"].as<int>());
 	//////////////////////////////////////////////////////////////////////
 	// run

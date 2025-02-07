@@ -403,17 +403,24 @@ int ConstraintTable::getHoldingTime()
 	int rst = length_min;
 	auto it = ct.find(goal_location);
 	if (it != ct.end())
-	{
-		for (auto time_range : it->second) // loop over edge and vertex constraints
+	{	
+		// loop over edge and vertex constraints
+		for (auto time_range : it->second){
+			// cout << "it->first " << it->first << " time_range.first " << time_range.first << " time_range.second " << time_range.second << " rst " << rst << endl;
 			rst = max(rst, time_range.second);
+		}
+			
 	}
 	// loop over the precedence constraints
 	for (auto landmark : landmarks) // landmarks : <timestep, location>; the agent must be at the given location at the given timestep
 	{
-		if (landmark.second != goal_location)
+		if (landmark.second != goal_location){
 			rst = max(rst, (int) landmark.first + 1);
+			// cout << "landmark.first " << landmark.first << " landmark.second " << landmark.second << " rst " << rst << endl;
+		}
 	}
   if (g_goal_time.size() != 0){
+	// cout << "g_goal_time.back() " << g_goal_time.back() << endl;
     rst = max(rst, g_goal_time.back() + 1);
   }
 	return rst;

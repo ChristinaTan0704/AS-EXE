@@ -77,7 +77,7 @@ public:
 				  const vector<Path*>& paths, int agent, int lower_bound);
  
 	int getTravelTime(int start, int end, const ConstraintTable& constraint_table, int upper_bound);
-
+	int avoid_dummy_path = false;
 	string getName() const { return "MLAStar"; }
 
 	MultiLabelSpaceTimeAStar(const Instance& instance, int agent) :
@@ -85,11 +85,13 @@ public:
 
 	Path findPathSegment(ConstraintTable& constraint_table, int start_time, int stage, int lowerbound);
 	Path findPathSegmentToPark(ConstraintTable& constraint_table, int start_time, int stage, int lowerbound);
+	Path findPathSegmentToParkWithTrajAvoid(ConstraintTable& constraint_table, int start_time, int stage, int lowerbound, vector<int> locVal);
 	int get_heuristic_ddmapd(int stage, int loc, int segment_stage) const;
-
-
+	bool timeout=false;
 
 private:
+	
+
 	void AvoidSafeParking(list<int> &next_locations);
 	// define typedefs and handles for heap
 	typedef pairing_heap<MultiLabelAStarNode*, compare<MultiLabelAStarNode::compare_node>> heap_open_t;

@@ -61,6 +61,8 @@ void SingleAgentSolver::compute_heuristics()
   {
     heuristic_landmark[i] = heuristic_landmark[i + 1] + my_heuristic[i + 1][goal_location[i]];
   }
+  // e.g. 3 goals; heuristic_landmark[2] = 0; heuristic_landmark[1] = distance between goal 2 and 1
+  // heuristic_landmark[1] = distance between goal 2 and 1 + distance between goal 1 and 0
 
   // if is ddmapd instance, compute shortest distance to the safe parking location
   if (ddmapd_path_planning){
