@@ -9,13 +9,15 @@ class PBS: public CBS
 {
 public:
   bool dummy_avoid = true;
+  vector<Path> final_paths;
   vector<Path*> curr_dummy_paths;
+  vector<Path> agent_dummy_paths;
+  vector<Path> agent_future_paths;
   vector<Path> dummy_paths_found_initially;  // contain initial paths found
   double topology_sort_time = 0;
   int branch_a_star_times = 0;
   int sum_a_star_times = 0;
   double a_star_runtime = 0;
-
   double part_a_time = 0;
   double part_b_time = 0;
   double part_c_time = 0;
@@ -25,6 +27,8 @@ public:
   double part_g_time = 0;
   double part_h_time = 0;
   double part_i_time = 0;
+  vector<bool> segment_planned;
+  bool validateSolution();
 
   ////////////////////////////////////////////////////////////////////////////////////////////
   // Runs the algorithm until the problem is solved or time is exhausted
@@ -39,23 +43,44 @@ public:
   // used to store initial priorities
   vector<ConstraintTable> initial_constraints;
   vector<Constraint> initial_priorities;
-  void set_heuristic(int h) { pbs_heuristic = h; }
+  void set_heuristic(int h) { heuristic = h; }
+  bool run_PBS(vector<int> independent_segments);
+
+  void build_constrain_table(ConstraintTable & curr_ct_table, int agent_id);
 
 private:
+  vector<int> agent_start_time;
+  vector<ConstraintTable> agent_constraint_table;
+  void Update_state(Path planned_path, int dummy_path_length, int agent_id, vector<int> future_connected_segments);
+  bool valid_connected_segment(int curr_segment_ID, int next_segment_ID, int current_agent);
+  vector<vector<int>> Init_connected_graph; // used for task start and end time estimation
+  vector<int> init_inDegree; // used for task start and end time estimation
+  vector<int> completion_time;
+  vector<int> earlist_start_time;
+  vector<int> agent_parkLocations;
+  int est_makespan;
+  vector<Segment> segments;
+  vector<int> get_independent_segment();
+  vector<vector<int>> curr_agent_segments;
+  std::tuple<std::vector<int>, std::vector<int>> get_combined_segments(int curr_segment_id);
+
+  vector<vector<int>> dependency_graph; // dependency_graph[i] is the list of segment IDs that segment i depends on, segment i can only start after all segments in dependency_graph[i] are finished
+  vector<int> curr_inDegree;
+  bool valid_to_combine(int curr_segment_id, int combined_segment_id);
   void updateDummyPath(Path & curr_path, Path & dummy_path, int & dummy_path_length);
 
   void printPaths() const;
   void printResults() const;
   bool ddmapd_instance;
-  int get_task_distance(int start_taskID, int end_taskID);
+  int get_dis_between_task(int start_taskID, int end_taskID);
 
-  int earlistCompletionTime(int num_tasks, vector<pair<int, int>>& priority, vector<int>& earliest_start_time);
+  void UpdateTaskEst();
 
   vector<vector<int>> task_locVal; // the location heuristic for each task, used in DD-MAPD
   int task_gap_threshold = 15; // the threshold for the makespan gap between two tasks; if the gap is smaller than this threshold, the two tasks are considered to be relevant and dummy path should try to avoid them.
   double locVal_offset = 100; // the max heuristic value for the loc for dummy path to avoid; will be divided by the actual task_gap
   int map_size = 0; 
-  void CalculateTaskStartTime(list<Constraint>  & constraints);
+  void Update_task_locVal();
 
   vector<vector<int>> temporal_adj_list, temporal_adj_list_r;
 
@@ -63,12 +88,10 @@ private:
 
   vector<Path> joined_paths;
 
-  bool generateChild(CBSNode* child, CBSNode* curr);
-  bool generateRoot();
-
   string getSolverName() const;
 
   vector<pair<int,int>> id2task;
+  vector<vector<int>> goal_segmentIDs;
   vector<int> idbase;
   int task2id(pair<int, int> task) const {
     return idbase[task.first] + task.second;
@@ -94,7 +117,7 @@ private:
   inline void updatePathsWithDummyPaths(CBSNode* curr);
   void AddDummyPathToAllLastTask(vector<Path*> & raw_paths);
   void AddDummyPathToLastTask(Path & curr_path, Path & dummy_path);
-
+  bool all_planned();
   // 
   // vector<Path*> paths;
   // vector<SingleAgentSolver*> search_engines;  // used to find (single) agents' paths and mdd
@@ -107,7 +130,7 @@ private:
 
   bool findOneConflict(int task1, int task2);
   bool findOneConflictWithDummyPath(int task1, int task2);
-  int pbs_heuristic = 1;
+  int heuristic = 1;
 
   // bool validateSolution() const;
 };
@@ -149,6 +172,5 @@ private:
 
   bool findOneConflict(int task1, int task2);
   // bool validateSolution() const;
-
 
 };

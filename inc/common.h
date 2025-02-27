@@ -42,6 +42,7 @@ using std::string;
 #define MAX_COST INT_MAX / 2
 #define MAX_NODES INT_MAX / 2
 
+
 struct PathEntry
 {
 	int location = -1;
@@ -49,7 +50,7 @@ struct PathEntry
 	int mdd_width;  // TODO:: Myabe this can be deleted as we always build/look for MDDs when we classify conflicts
   bool is_goal;
   int task = -1;
-
+  int segmentID = -1;
 	bool is_single() const
 	{
 		return mdd_width == 1;

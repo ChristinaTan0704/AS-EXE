@@ -1,50 +1,59 @@
 #pragma once
 
-#include"common.h"
+#include "common.h"
 
 typedef std::pair<int, int> event;
 
-struct Segment{
-  int id;
-  int traj_start_timestep;
-  int traj_end_timestep;
-  int agent;
-  vector<int> dep_agent;
-  vector<int> dep_seqPos; // corresponding to dep_agent
-  vector<int> trajectory;
-
-  int traj_len;
-  Segment(int id, int traj_start_timestep, int traj_end_timestep, int agent, vector<int> dep_seqPos, vector<int> dep_agent, vector<int> trajectory):
-	id(id), traj_start_timestep(traj_start_timestep), traj_end_timestep(traj_end_timestep), agent(agent), dep_seqPos(dep_seqPos), dep_agent(dep_agent), trajectory(trajectory){
-		if (dep_agent.size() != dep_seqPos.size()) {
+struct Segment
+{
+	int id;
+	int seq_pos;
+	int traj_start_timestep;
+	int traj_end_timestep;
+	int start_timestep;
+	int end_timestep;
+	int agent;
+	int taskID;
+	vector<int> dep_agent;
+	vector<int> dep_seqPos; // corresponding to dep_agent
+	vector<int> trajectory;
+	vector<int> dependencies; // tasks need to finish before this segment
+	vector<int> parents;	  // tasks need to finish before this segment
+	vector<int> combined_segments;
+	int traj_len;
+	Segment(int seq_pos, int id, int taskID, int traj_start_timestep, int traj_end_timestep, int agent, vector<int> dep_seqPos, vector<int> dep_agent, vector<int> trajectory, vector<int> dependencies, vector<int> parents) : seq_pos(seq_pos), id(id), taskID(taskID), traj_start_timestep(traj_start_timestep), traj_end_timestep(traj_end_timestep), agent(agent), dep_seqPos(dep_seqPos), dep_agent(dep_agent), trajectory(trajectory), dependencies(dependencies), parents(parents)
+	{
+		if (dep_agent.size() != dep_seqPos.size())
+		{
 			throw std::invalid_argument("dep_agent and dep_seqPos must have the same size");
 		}
-	traj_len = trajectory.size();
+		traj_len = trajectory.size();
 	}
-  Segment(){}
+	Segment() {}
 };
 
-
 // Currently only works for undirected unweighted 4-neighbor grids
-class Instance 
+class Instance
 {
 public:
 	int num_of_cols;
 	int num_of_rows;
 	int map_size;
-    int num_of_segments;
+	int num_of_segments;
 	bool ddmapd_instance = false;
 	vector<vector<int>> goal_segmentIDs;
 	vector<Segment> segments;
 	vector<int> start_locations;
-	
+	vector<vector<int>> dependency_graph; // dependency_graph[i] is the list of segment IDs that segment i depends on, segment i can only start after all segments in dependency_graph[i] are finished
 	// enum valid_moves_t { NORTH, EAST, SOUTH, WEST, WAIT_MOVE, MOVE_COUNT };  // MOVE_COUNT is the enum's size
 
 	Instance() {}
-	Instance(const string& map_fname, const string& agent_fname, const string& assignment_folder,
+	Instance(const string &map_fname, const string &agent_fname, const string &assignment_folder,
 			 int num_of_agents = 0, int num_of_rows = 0, int num_of_cols = 0, int num_of_obstacles = 0, int warehouse_width = 0);
 
 	void printAgents() const;
+	vector<vector<pair<int, int>>> temporal_cons;
+
 
 	vector<Segment> getSegments(vector<int> id_list) const;
 	inline bool isObstacle(int loc) const { return my_map[loc]; }
@@ -67,7 +76,7 @@ public:
 		return abs(loc1_x - loc2_x) + abs(loc1_y - loc2_y);
 	}
 
-	inline int getManhattanDistance(const pair<int, int>& loc1, const pair<int, int>& loc2) const
+	inline int getManhattanDistance(const pair<int, int> &loc1, const pair<int, int> &loc2) const
 	{
 		return abs(loc1.first - loc2.first) + abs(loc1.second - loc2.second);
 	}
@@ -89,11 +98,6 @@ public:
 
 	int getDefaultNumberOfAgents() const { return num_of_agents; }
 	bool AtOtherAgentParking(int loc, int agent) const { return agent_Parking[agent][loc]; }
-  // should be moved to private
-  // vector<TemporalEdge> temporal_cons;
-  // temporal_cons[i * num_of_agents + j] = [{k, l}]
-  // The k-th task of i should happens before the l-th task of j
-  vector<vector<pair<int, int>> > temporal_cons;
 
 protected:
 	// int moves_offset[MOVE_COUNT];
@@ -105,21 +109,17 @@ protected:
 	int num_of_agents;
 	vector<vector<int>> goal_locations;
 	vector<vector<bool>> agent_Parking;
-	
-
-
 
 	bool loadMap();
 	void printMap() const;
 	void saveMap() const;
 
 	bool loadAgentsJson();
-	virtual bool loadAgents();
 	virtual void saveAgents() const;
 
 	void generateConnectedRandomGrid(int rows, int cols, int obstacles); // initialize new [rows x cols] map with random obstacles
 	void generateRandomAgents(int warehouse_width);
-	bool addObstacle(int obstacle); // add this obstacle only if the map is still connected
+	bool addObstacle(int obstacle);		   // add this obstacle only if the map is still connected
 	bool isConnected(int start, int goal); // run BFS to find a path between start and goal, return true if a path exists.
 
 	int randomWalk(int loc, int steps) const;
@@ -127,4 +127,3 @@ protected:
 	// Class  SingleAgentSolver can access private members of Node
 	friend class SingleAgentSolver;
 };
-

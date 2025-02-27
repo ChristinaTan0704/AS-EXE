@@ -59,7 +59,7 @@ public:
 					s1->location == s2->location &&
 					s1->timestep == s2->timestep &&
             s1->stage == s2->stage &&
-					s1->wait_at_goal == s2->wait_at_goal);
+					s1->wait_at_goal == s2->wait_at_goal && s1->segmentID == s2->segmentID && s1->segment_stage == s2->segment_stage && s1->path_idx == s2->path_idx);
 		}
 	};
 };
@@ -84,9 +84,10 @@ public:
 			SingleAgentSolver(instance, agent) {}
 
 	Path findPathSegment(ConstraintTable& constraint_table, int start_time, int stage, int lowerbound);
-	Path findPathSegmentToPark(ConstraintTable& constraint_table, int start_time, int stage, int lowerbound);
-	Path findPathSegmentToParkWithTrajAvoid(ConstraintTable& constraint_table, int start_time, int stage, int lowerbound, vector<int> locVal);
-	int get_heuristic_ddmapd(int stage, int loc, int segment_stage) const;
+	Path findShortestPath(ConstraintTable& constraint_table, const pair<int, int> start_state, int lowerbound);
+	// Path findPathSegmentToPark(ConstraintTable& constraint_table, int start_time, int stage, int lowerbound);
+	Path findPathSegmentToParkWithTrajAvoid(ConstraintTable &constraint_table, int start_time, int segment_start, int agent_current_loc, int parking_loc, vector<int> trajectory, vector<int> trajEnds, vector<int> segmentIDs, vector<int> locVal);
+	int get_heuristic_ddmapd(int loc, int segment_stage, int segment_start_loc, int segment_end_loc, int traj_len, int park_loc) const;
 	bool timeout=false;
 
 private:
@@ -105,10 +106,7 @@ private:
 	// define typedef for hash_map
 	typedef unordered_set<MultiLabelAStarNode*, MultiLabelAStarNode::NodeHasher, MultiLabelAStarNode::eqnode> hashtable_t;
 	hashtable_t allNodes_table;
-
-	// find path
-	Path findShortestPath(ConstraintTable& constraint_table, const pair<int, int> start_state, int lowerbound);
-	Path findPath(ConstraintTable& constraint_table, const pair<int, int> start, const pair<int, int> goal);
+	vector<MultiLabelAStarNode*> trajNodes_table;
 
 	// Updates the path datamember
 	void updatePath(const LLNode* goal, Path& path);

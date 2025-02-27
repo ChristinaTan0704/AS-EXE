@@ -592,7 +592,7 @@ bool CBS::generateChild(CBSNode* node, CBSNode* parent)
   else if (type == constraint_type::LEQSTOP || type == constraint_type::GSTOP){
     stp_helper.propagate(parent, node);
     unordered_set<int> agents_need_replan;
-    
+
     for (auto con: node->constraints){
       int a, x, y, t;
       constraint_type type;

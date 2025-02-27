@@ -10,7 +10,6 @@ public:
 	unsigned int stage;
 	unsigned int segment_stage = 0;
 	bool is_dummy_path = false;
-	int task = -1;
 	unsigned int dist_to_next = 0;
 	vector<int> timestamps;
 	vector<int> secondary_keys;
@@ -24,6 +23,7 @@ public:
 	int timestep = 0;
 	int num_of_conflicts = 0;
 	bool in_openlist = false;
+	int segmentID = -1;
 	bool wait_at_goal; // the action is to wait at the goal vertex or not. This is used for >length constraints
 	// the following is used to compare nodes in the OPEN list
 	struct compare_node
@@ -38,7 +38,12 @@ public:
 				{
 					if (n1->g_val + n1->h_val == n2->g_val + n2->h_val)
 					{
-						return rand() % 2;
+						if (n1->g_val == n2->g_val){
+							return rand() % 2;
+						}
+						else{
+							return n1->g_val < n2->g_val;
+						}
 					}
 					else
 					{
@@ -47,17 +52,24 @@ public:
 				}else{
 					if (n1->g2_val + n1->h2_val + n1->g_val + n1->h_val == n2->g2_val + n2->h2_val + n2->g_val + n2->h_val)
 					{
-						return rand() % 2;
+						if (n1->g2_val == n2->g2_val){
+							return rand() % 2;
+						}
+						else{
+							return n1->g2_val < n2->g2_val;
+						}
 					}
 					else
 					{
-						return n1->g2_val + n1->h2_val + n1->g_val + n1->h_val > n2->g2_val + n2->h2_val + n2->g_val + n2->h_val;
+						// min heap based on f-val, prioritize the one with smaller f-val
+						return n1->g2_val + n1->h2_val + n1->g_val + n1->h_val > n2->g2_val + n2->h2_val + n2->g_val + n2->h_val; 
 					}
 				}
 				
 			}
 			else
 			{
+				// prioritize the one with larger segment_stage
 				return n1->segment_stage < n2->segment_stage;
 			}
 		}
@@ -205,6 +217,12 @@ public:
 		timestep = other.timestep;
 		num_of_conflicts = other.num_of_conflicts;
 		wait_at_goal = other.wait_at_goal;
+		segmentID = other.segmentID;
+		segment_stage = other.segment_stage;
+		is_dummy_path = other.is_dummy_path;
+		path_idx = other.path_idx;
+		g2_val = other.g2_val;
+		h2_val = other.h2_val;
 	}
 };
 
@@ -246,8 +264,7 @@ public:
 	virtual Path findPath(const CBSNode &node, const ConstraintTable &initial_constraints,
 						  const vector<Path *> &paths, int agent, int lower_bound) = 0;
 	virtual Path findPathSegment(ConstraintTable &constraint_table, int start_time, int stage, int lowerbound) = 0;
-	virtual Path findPathSegmentToPark(ConstraintTable &constraint_table, int start_time, int stage, int lowerbound) = 0;
-	virtual Path findPathSegmentToParkWithTrajAvoid(ConstraintTable &constraint_table, int start_time, int stage, int lowerbound, vector<int> locVal) = 0;
+	virtual Path findPathSegmentToParkWithTrajAvoid(ConstraintTable &constraint_table, int start_time, int segment_start, int agent_current_loc, int parking_loc, vector<int> trajectory, vector<int> trajEnds, vector<int> segmentIDs, vector<int> locVal) = 0;
 	virtual int getTravelTime(int start, int end, const ConstraintTable &constraint_table, int upper_bound) = 0;
 	virtual string getName() const = 0;
 
@@ -267,7 +284,7 @@ public:
 			agent_idx = agent;
 			agent_segments = instance.getSegments(instance.goal_segmentIDs[agent]);
 		}
-		compute_heuristics();
+		// compute_heuristics();
 	}
 
 	virtual ~SingleAgentSolver() {}

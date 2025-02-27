@@ -117,6 +117,7 @@ protected:
   int num_of_agents;
 
 
+  // vector<Path*> curr_paths;
   vector<Path*> paths;
   vector<Path> paths_found_initially;  // contain initial paths found
   // vector<MDD*> mdds_initially;  // contain initial paths found

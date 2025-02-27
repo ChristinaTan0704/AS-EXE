@@ -43,11 +43,6 @@ Instance::Instance(const string& map_fname, const string& agent_fname, const str
 		// It's a directory, read all files in the directory
 		succ = loadAgentsJson();
 	}
-	else if (stat(agent_fname.c_str(), &info) == 0 && (info.st_mode & S_IFREG))
-	{
-		// It's a file
-		succ = loadAgents();
-	}
 	else
 	{
 		// Neither a directory nor a file
@@ -98,9 +93,10 @@ bool Instance::loadAgentsJson(){
 	json agent_seq_json = json::parse(agent_seq_file);
 	json segment_info_json = json::parse(segment_info_file);
 
-
+	num_of_agents = agent_seq_json.size();
 	// Initialize segments
 	segments.resize(segment_info_json.size());
+	dependency_graph.resize(segment_info_json.size());
 	for (auto [key, value] : segment_info_json.items()){
         
 		int segment_id = value["segment_id"];
@@ -113,7 +109,12 @@ bool Instance::loadAgentsJson(){
 		}
 		vector<int> dep_seqPos = value["dep_agent_seqPos"];
 		vector<int> dep_agent = value["dep_agent_seq"];
-		segments[segment_id] = Segment(segment_id, traj_start_timestep, traj_end_timestep, agent, dep_seqPos, dep_agent, trajectory);
+		vector<int> dependencies = value["dependencies"];
+		vector<int> parents = value["parents"];
+		int taskID = value["task_ID"];
+		int seq_pos = value["seq_pos"];
+		dependency_graph[segment_id] = dependencies;
+		segments[segment_id] = Segment(seq_pos, segment_id, taskID, traj_start_timestep, traj_end_timestep, agent, dep_seqPos, dep_agent, trajectory, dependencies, parents);
 	}
 
 	// Initialize agent & goals precedence constraints
@@ -121,23 +122,33 @@ bool Instance::loadAgentsJson(){
 	start_locations.resize(num_of_agents); // start_locations[i] is the start location for agent i
 	goal_locations.resize(num_of_agents); // goal_locations[i] is the list of goal locations for agent i; goal_locations[i][j] the location for goal_ids[i][j]
 	goal_segmentIDs.resize(num_of_agents); // goal_segmentIDs[i] is the list of segment IDs for agent i;
-	temporal_cons.resize(num_of_agents * num_of_agents);
+
+
 	for (auto [key, value] : agent_seq_json.items())
 	{
 		int to_agent = std::stoi(key);
 		start_locations[to_agent] = linearizeCoordinate(value["start_loc"][0], value["start_loc"][1]);
-		for (int to_landmark = 0; to_landmark < value["seq"].size(); to_landmark++)
+		goal_locations[to_agent].resize(value["seq"].size()); 
+		goal_segmentIDs[to_agent].resize(value["seq"].size()); 
+		for (int seq_index = 0; seq_index < value["seq"].size(); seq_index++)
 		{
-			int to_landmark_seqID = value["seq"][to_landmark];
-			goal_locations[to_agent].push_back(segments[to_landmark_seqID].trajectory[0]);
-			goal_segmentIDs[to_agent].push_back(to_landmark_seqID);
-			for (int i = 0; i < segments[to_landmark_seqID].dep_seqPos.size(); i++){
-				int from_agent = segments[to_landmark_seqID].dep_agent[i];
-				int from_landmark = segments[to_landmark_seqID].dep_seqPos[i];
-				temporal_cons[from_agent * num_of_agents +to_agent].push_back({from_landmark, to_landmark});
+			int to_landmark_seqID = value["seq"][seq_index];
+			goal_locations[to_agent][seq_index] = segments[to_landmark_seqID].trajectory[0];
+			goal_segmentIDs[to_agent][seq_index] = to_landmark_seqID;
+			if (seq_index >= 1)
+			{
+				int from_segment_ID = value["seq"][seq_index - 1];
+				int to_segment_ID = value["seq"][seq_index];
+				// if from_segment_ID no in dependencies of to_segment_ID, add it
+				if (std::find(dependency_graph[to_segment_ID].begin(), dependency_graph[to_segment_ID].end(), from_segment_ID) == dependency_graph[to_segment_ID].end()){
+					dependency_graph[to_segment_ID].push_back(from_segment_ID);
+					segments[from_segment_ID].parents.push_back(to_segment_ID);
+				}
 			}
+
 		}
-	}
+
+    }
 	for (int cur_agent = 0; cur_agent < num_of_agents; cur_agent++){
 		agent_Parking[cur_agent].resize(map_size, false);
 		for (int other_agent = 0; other_agent < num_of_agents; other_agent++){
@@ -388,85 +399,6 @@ void Instance::saveMap() const
 }
 
 
-bool Instance::loadAgents()
-{
-	using namespace std;
-	using namespace boost;
-
-	string line;
-	ifstream myfile(agent_fname.c_str());
-	if (!myfile.is_open())
-		return false;
-
-	getline(myfile, line);
-  // My benchmark
-  if (num_of_agents == 0)
-		{
-			cerr << "The number of agents should be larger than 0" << endl;
-			exit(-1);
-		}
-  start_locations.resize(num_of_agents);
-  goal_locations.resize(num_of_agents);
-  temporal_cons.resize(num_of_agents * num_of_agents);
-
-  char_separator<char> sep("\t");
-  for (int i = 0; i < num_of_agents; i++)
-		{
-			getline(myfile, line);
-      while (line[0] == '#'){
-        getline(myfile, line);
-      }
-			tokenizer<char_separator<char>> tok(line, sep);
-			tokenizer<char_separator<char>>::iterator beg = tok.begin();
-			// read start [row,col] for agent i
-			int num_landmarks = atoi((*beg).c_str());
-      beg++;
-      auto col = atoi((*beg).c_str());
-      beg++;
-      auto row = atoi((*beg).c_str());
-
-      start_locations[i] = linearizeCoordinate(row, col);
-      goal_locations[i].resize(num_landmarks);
-		 //  getline(myfile, line);
-		 //  tokenizer<char_separator<char>> tok_landmakrs(line, sep);
-		 //  tokenizer<char_separator<char>>::iterator beg_landmarks = tok_landmakrs.begin();
-     for (int j = 0; j < num_landmarks; j++){
-        beg++;
-        col = atoi((*beg).c_str());
-        beg++;
-        row = atoi((*beg).c_str());
-        goal_locations[i][j] = linearizeCoordinate(row, col);
-      }
-		}
-
-  getline(myfile, line);
-  while (!myfile.eof() && line[0] != 't'){
-    getline(myfile, line);
-  }
-  while (!myfile.eof()){
-    getline(myfile, line);
-    tokenizer<char_separator<char>> tok(line, sep);
-    tokenizer<char_separator<char>>::iterator beg = tok.begin();
-    if (std::distance( tok.begin(), tok.end() ) >= 4){
-			int from_agent = atoi((*beg).c_str());
-      beg++;
-			int from_landmark = atoi((*beg).c_str());
-      beg++;
-			int to_agent = atoi((*beg).c_str());
-      beg++;
-			int to_landmark = atoi((*beg).c_str());
-      if (from_agent < num_of_agents && to_agent < num_of_agents){
-        cout << from_agent << ": " << from_landmark << " -> " << to_agent << ": " << to_landmark << endl;
-        temporal_cons[from_agent * num_of_agents +to_agent].push_back({from_landmark, to_landmark});
-      } 
-    }
-
-  }
-
-  myfile.close();
-	return true;
-
-}
 
 
 void Instance::printAgents() const

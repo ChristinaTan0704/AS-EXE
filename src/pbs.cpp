@@ -17,8 +17,8 @@ int main(int argc, char** argv)
 	po::options_description desc("Allowed options");
 	desc.add_options()
 		("help", "produce help message")
-		("pbs_heuristic", po::value<int>()->default_value(1), "(1) cost (2) makespan")
-		("dummy_avoid", po::value<bool>()->default_value(true), "whether to let dummy path avoid segment trajectory, only used in DD-MAPD instance")
+		("heuristic", po::value<int>()->default_value(1), "(1) random (2) cost (3) makespan (4) number of dependencies")
+		("dummy_avoid", po::value<bool>()->default_value(false), "whether to let dummy path avoid segment trajectory, only used in DD-MAPD instance")
 		("assignment_folder,f", po::value<string>()->default_value(""), "path to folder that contains the assignment files")
 		// params for the input instance and experiment settings
 		("map,m", po::value<string>()->default_value(""), "input file for map")
@@ -53,9 +53,7 @@ int main(int argc, char** argv)
 		cerr << "SIPP cannot work together with target reasoning!" << endl;
 		return -1;
 	}*/
-
   
-	srand((int) time(0));
 
 	///////////////////////////////////////////////////////////////////////////
 	// load the instance
@@ -71,7 +69,7 @@ int main(int argc, char** argv)
 	// initialize the solver
 	PBS pbs(instance, vm["screen"].as<int>());
 	pbs.dummy_avoid = vm["dummy_avoid"].as<bool>();
-	pbs.set_heuristic(vm["pbs_heuristic"].as<int>());
+	pbs.set_heuristic(vm["heuristic"].as<int>());
 	//////////////////////////////////////////////////////////////////////
 	// run
 	double runtime = 0;
