@@ -5,6 +5,7 @@ typedef pairing_heap<CBSNode *, compare<CBSNode::compare_node>> dfs_stack_t;
 #include <algorithm>
 #include <random>
 
+
 // Comparator function that compares based on the values in segment_value map
 bool compareBySegmentValue(const int& a, const int& b, const std::map<int, int>& segment_value) {
     return segment_value.at(a) < segment_value.at(b);
@@ -29,83 +30,77 @@ void PBS::printPaths() const
 	}
 }
 
-PBS::PBS(const Instance &instance, int screen) : CBS(instance, false, heuristics_type::ZERO, screen)
-{
-  clock_t t = clock();
+//PBS::PBS(const Instance &instance, int screen): CBS(instance, screen)
+//{
+//  clock_t t = clock();
+//
+//  this->screen = screen;
+//  num_of_tasks = instance.segments.size();
+//  num_of_agents = instance.getDefaultNumberOfAgents();
+//  ddmapd_instance = instance.ddmapd_instance;
+//  vertices = instance.vertices;
+//  agent_parkLoc = instance.agent_parkLoc;
+//
+//  // build graph
+//  for (auto vertex : vertices)
+//  {
+//    for (int type1_id : vertex.type1_idList)
+//    {
+//      initial_graph.addEdge(vertex.id, type1_id);
+//    }
+//    for (int type2_id : vertex.type2_idList)
+//    {
+//      initial_graph.addEdge(vertex.id, type2_id);
+//    }
+//  }
+//
+//  if (initial_graph.hasCycle()){
+//    cout << "Initial graph has cycle" << endl;
+//    exit(1);
+//  }
+//  else{
+//    cout << "Good, initial graph has no cycle" << endl;
+//  }
+//
+//
+//}
 
-  this->screen = screen;
-  num_of_tasks = instance.segments.size();
-  num_of_agents = instance.getDefaultNumberOfAgents();
-  ddmapd_instance = instance.ddmapd_instance;
-  focal_w = 1;
 
-  dependency_graph = instance.dependency_graph;
-  segments = instance.segments;
-  est_makespan = 0;
-  completion_time.resize(num_of_tasks, 0);
-  earlist_start_time.resize(num_of_tasks, 0);
-  agent_start_time.resize(num_of_agents, 0);
-  map_size = instance.map_size;
-  task_locVal.resize(num_of_tasks);
-  agent_future_paths.resize(num_of_agents);
-  for (int i = 0; i < num_of_tasks; i++){
-    task_locVal[i].resize(map_size, 0);
-  }
-  id2task.resize(num_of_tasks);
-  agent_constraint_table.resize(num_of_agents);
-  agent_dummy_paths.resize(num_of_agents);
-  final_paths.resize(num_of_tasks);
-  goal_segmentIDs = instance.goal_segmentIDs;
-  agent_parkLocations = instance.start_locations;
-  // initilize the id2task
-  for (auto one_segment : instance.segments)
-  {
-    id2task[one_segment.id] = make_pair(one_segment.agent, one_segment.seq_pos);
-  }
 
-  // Calculate in-degrees
-  curr_inDegree.resize(dependency_graph.size(), 0); // dependency_graph[to_segment] = {from_segment}
-  for (int segment_id = 0; segment_id < num_of_tasks; segment_id++)
-  {
-    curr_inDegree[segment_id] = dependency_graph[segment_id].size();
-
-  }
-
-  // debug TODO del
-  // cout << "inDegree : ";
-  // for (int i = 0; i < num_of_tasks; i++)
-  // {
-  //   cout << "## segmentID " << i << " inDegree " << curr_inDegree[i] << endl;
-  //   if (curr_inDegree[i] == 0){
-  //     for (auto one_parent : segments[i].parents){
-  //       cout << "parent " << one_parent << " " << " inDegree " << curr_inDegree[one_parent] << endl;
-  //     }
-  //   }
-  // }
-  // debug TODO del
-
-  init_inDegree = curr_inDegree;
-  search_engines.resize(num_of_agents);
-
-  // idbase.resize(num_of_agents, 0);
-  // initilize the search engines for each agent
-  for (int i = 0; i < num_of_agents; i++)
-  {
-    search_engines[i] = new MultiLabelSpaceTimeAStar(instance, i);
-//        if (i != 0)
-    // {
-    //   idbase[i] = idbase[i - 1] + search_engines[i - 1]->goal_location.size();
-    // }
-  }
-
-  runtime_preprocessing = (double)(clock() - t) / CLOCKS_PER_SEC;
-
-  if (screen >= 2) // print start and goals
-  {
-    instance.printAgents();
-  }
-
-}
+//PBS::PBS(const Instance &instance, int screen): CBS(instance, screen)
+//{
+//  clock_t t = clock();
+//
+//  this->screen = screen;
+//  num_of_tasks = instance.segments.size();
+//  num_of_agents = instance.getDefaultNumberOfAgents();
+//  ddmapd_instance = instance.ddmapd_instance;
+//  vertices = instance.vertices;
+//  agent_parkLoc = instance.agent_parkLoc;
+//
+//  // build graph
+//  for (auto vertex : vertices)
+//  {
+//    for (int type1_id : vertex.type1_idList)
+//    {
+//      initial_graph.addEdge(vertex.id, type1_id);
+//    }
+//    for (int type2_id : vertex.type2_idList)
+//    {
+//      initial_graph.addEdge(vertex.id, type2_id);
+//    }
+//  }
+//
+//  if (initial_graph.hasCycle()){
+//    cout << "Initial graph has cycle" << endl;
+//    exit(1);
+//  }
+//  else{
+//    cout << "Good, initial graph has no cycle" << endl;
+//  }
+//
+//
+//}
 
 bool PBS::valid_connected_segment(int curr_segment_ID, int next_segment_ID, int current_agent)
 {
@@ -211,232 +206,6 @@ void PBS::build_constrain_table(ConstraintTable & curr_ct_table, int agent_id){
 bool PBS::solve(double time_limit, int cost_lowerbound, int cost_upperbound)
 {
 
-  double update_time = 0;
-  double build_ct_time = 0;
-  double est_time = 0;
-  double a_start_time = 0;
-  auto sys_start_time = clock();
-
-
-  vector<int> agent_current_loc;
-  vector<int> segment_traj;
-  vector<int> trajEnds;
-  vector<int> segmentIDs;
-  std::map<int, int> agent_pathLen;
-  agent_current_loc.resize(num_of_agents);
-
-  auto est_start_time = clock();
-  UpdateTaskEst();
-  if (dummy_avoid){
-    Update_task_locVal();
-  }
-
-  int makespan_lower_bound = 0;
-  int cost_lower_bound = 0;
-
-  for (int i = 0; i < goal_segmentIDs.size(); i++)
-  {
-    makespan_lower_bound = max(makespan_lower_bound, completion_time[goal_segmentIDs[i].back()]);
-    cost_lower_bound += completion_time[goal_segmentIDs[i].back()];
-  }
-  
-  cout << "makespan_lower_bound " << makespan_lower_bound << " cost_lower_bound " << cost_lower_bound << endl;
-
-  // exit(0); // TODO del
-  est_time += (double)(clock() - est_start_time) / CLOCKS_PER_SEC;
-
-
-  for (int i = 0; i < num_of_agents; i++)
-  {
-    agent_current_loc[i] = search_engines[i]->start_location;
-  }
-  
-  while (!all_planned())
-  {
-    vector<int> independent_segments;
-    independent_segments = get_independent_segment();
-
-    if (independent_segments.size() > num_of_agents){
-      cout << "independent segments size " << independent_segments.size() << " num of agents " << num_of_agents << endl;
-      return false;
-    }
-
-    if (independent_segments.empty())
-    {
-      cout << "no independent segments but planning not finished" << endl;
-      return false;
-    }
-		// ("heuristic", po::value<int>()->default_value(1), "(1) random (2) cost (3) makespan (4) number of dependencies")
-    if (heuristic == 1) // random priority
-    {
-      std::shuffle(independent_segments.begin(), independent_segments.end(), std::default_random_engine(std::random_device()()));
-    }
-    else{
-      std::map<int, int> segment_value;
-      if (heuristic == 2) // cost, prioritize larger cost
-      {
-        for (int segment_id : independent_segments)
-        {
-          segment_value[segment_id] = agent_pathLen[segments[segment_id].agent];
-        }
-      }
-      if (heuristic == 3) // makespan, prioritize larger makespan
-      {
-        for (int segment_id : independent_segments)
-        {
-          int last_segment_id = goal_segmentIDs[segments[segment_id].agent].back();
-          segment_value[segment_id] = completion_time[last_segment_id];
-        }
-      }
-      if (heuristic == 4) // number of dependencies, prioritize larger number of dependencies
-      {
-        for (int segment_id : independent_segments)
-        {
-          segment_value[segment_id] = segments[segment_id].parents.size();
-        }
-      }
-      std::sort(independent_segments.begin(), independent_segments.end(),
-        [&segment_value](int a, int b) {
-            return compareBySegmentValue(a, b, segment_value);
-        });
-    }
-
-    for (int segment_id : independent_segments)
-    {
-      // ConstraintTable ct;
-      int curr_agent = segments[segment_id].agent;
-      int curr_pos = segments[segment_id].seq_pos;
-      auto [combined_segments, future_connected_segments] = get_combined_segments(segment_id);
-      int curr_len = 0;
-      for (int index = 0; index < combined_segments.size(); index++)
-      {
-        int one_segment_id = combined_segments[index];
-        if (index==0){
-          segment_traj.insert(segment_traj.end(), segments[one_segment_id].trajectory.begin(), segments[one_segment_id].trajectory.end());
-          curr_len += segments[one_segment_id].trajectory.size();
-        }
-        else{
-          // exclude the first location of the segment trajectory
-          segment_traj.insert(segment_traj.end(), segments[one_segment_id].trajectory.begin() + 1, segments[one_segment_id].trajectory.end());
-          curr_len += segments[one_segment_id].trajectory.size() - 1;
-        }
-        trajEnds.push_back(curr_len - 1);
-        segmentIDs.push_back(one_segment_id);
-      }
-
-      
-      ConstraintTable* ct = new ConstraintTable();
-      auto build_ct_start_time = clock();
-      build_constrain_table(*ct, curr_agent); 
-      build_ct_time += (double)(clock() - build_ct_start_time) / CLOCKS_PER_SEC;
-      // cout << "build ct time " << build_ct_time << endl; // debug TODO del
-
-      // if (curr_agent == 6){ // debug TODO del
-      //   search_engines[curr_agent]->debug_agent = 6;
-      // }
-      // else{
-      //   search_engines[curr_agent]->debug_agent = -1;
-      // }
-      auto a_start_time = clock();
-      Path planned_path = search_engines[curr_agent]->findPathSegmentToParkWithTrajAvoid(*ct, agent_start_time[curr_agent], earlist_start_time[segment_id], agent_current_loc[curr_agent], search_engines[curr_agent]->start_location, segment_traj, trajEnds, segmentIDs, task_locVal[segment_id]);
-      a_start_time = (double)(clock() - a_start_time) / CLOCKS_PER_SEC;
-      // cout << "A* time " << a_start_time << endl; // debug TODO del
-      delete ct;  // Properly destroys the object and frees memory
-
-      if (planned_path.empty())
-      {
-        cout << "no solution for segment " << segment_id << endl;
-        return false;
-      }
-
-
-      //  debug TODO del
-      cout << "##### planning for agent " << curr_agent << " path start time " << agent_start_time[curr_agent] << " segment " << segment_id << " segment_earlist_start " << earlist_start_time[segment_id]  << " ##### " << endl;
-      cout << "combined_segments : ";
-      for (int seg : combined_segments)
-      {
-        cout << seg << "  ";
-      }
-      cout << endl;
-
-
-      cout << "segment_traj : ";
-      for (int i = 0; i < segment_traj.size(); i++)
-      {
-        // cout << segment_traj[i] << " @(" << search_engines[0]->instance.getRowCoordinate(segment_traj[i]) << "," << search_engines[0]->instance.getColCoordinate(segment_traj[i]) << ") t " << segment_traj.begin() + i << " --> ";
-        cout << segment_traj[i] << " @(" << search_engines[0]->instance.getRowCoordinate(segment_traj[i]) << "," << search_engines[0]->instance.getColCoordinate(segment_traj[i])  << " --> ";
-      }
-      cout << endl;
-
-      cout << "trajEnds : ";
-      for (int loc : trajEnds)
-      {
-        cout << loc << " @(" << search_engines[0]->instance.getRowCoordinate(segment_traj[loc]) << "," << search_engines[0]->instance.getColCoordinate(segment_traj[loc]) << ") --> ";
-      }
-      cout << endl;
-
-
-      cout << "planned_path : ";
-      for (int i = 0; i < planned_path.size(); i++)
-      {
-        cout << planned_path[i].location << " @(" << search_engines[0]->instance.getRowCoordinate(planned_path[i].location) << "," << search_engines[0]->instance.getColCoordinate(planned_path[i].location) << ") t " << planned_path.begin_time + i << " --> ";
-      }
-      cout << endl;
-
-
-
-      agent_current_loc[curr_agent] = segment_traj.back();
-
-      auto update_start_time = clock();
-      Update_state(planned_path, search_engines[curr_agent]->dummy_path_len, curr_agent, future_connected_segments);
-      update_time += (double)(clock() - update_start_time) / CLOCKS_PER_SEC;
-      // cout << "update time " << update_time << endl; // debug TODO del
-
-      est_start_time = clock();
-      UpdateTaskEst();
-      if (dummy_avoid){
-        Update_task_locVal();
-      }
-      est_time += (double)(clock() - est_start_time) / CLOCKS_PER_SEC;
-      // cout << "est time " << est_time << endl; // debug TODO del
-
-      segment_traj.clear();
-      trajEnds.clear();
-      segmentIDs.clear();
-      agent_pathLen[curr_agent] = planned_path.size() - search_engines[curr_agent]->dummy_path_len - 1; // -1 minus the previous start location
-
-        if (curr_agent == 5){
-            int debug = 1;
-        }
-    }
-    independent_segments.clear();
-  }
-
-  join_paths();
-  printPaths();
-
-  int makespan = 0;
-  int sum_of_cost = 0;
-  paths.resize(final_paths.size(), nullptr);
-  for (int i= 0 ; i < num_of_agents; i++){
-    int path_len = final_paths[i].path.size() - agent_dummy_paths[i].path.size();
-    cout << "agent " << i << " path_length " << path_len << " " ;
-    makespan = max(makespan, path_len);
-    sum_of_cost += path_len;
-    paths[i] = &final_paths[i];
-  }
-  cout << endl;
-  cout << "makespan " << makespan << " sum_of_cost " << sum_of_cost << endl;
-
-  cout << "runtime " << (double)(clock() - sys_start_time) / CLOCKS_PER_SEC << " a_start_time " << a_start_time << " update_time " << update_time << " build_ct_time " << build_ct_time << " est_time " << est_time << endl;
-
-  if (validateSolution()){
-    
-    return true;
-  }
-  else{
-    return false;
-  }
 
 }
 

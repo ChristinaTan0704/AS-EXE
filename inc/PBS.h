@@ -1,5 +1,6 @@
 #pragma once
 #include "CBS.h"
+#include "graph.h"
 
 
 unordered_set<int> reachable_set(int source, vector<vector<int>> adj_list);
@@ -8,6 +9,12 @@ unordered_set<int> reachable_set(int source, vector<vector<int>> adj_list);
 class PBS: public CBS
 {
 public:
+
+  // Switchable dd-mapd 
+  vector<Vertex> vertices;
+  vector<int> agent_parkLoc;
+  DirectedGraph initial_graph;
+
   bool dummy_avoid = true;
   vector<Path> final_paths;
   vector<Path*> curr_dummy_paths;
@@ -35,6 +42,7 @@ public:
   bool solve(double time_limit, int cost_lowerbound = 0, int cost_upperbound = MAX_COST);
 
   PBS(const Instance& instance, int screen);
+  PBS(const Instance& instance);
   // PBS(vector<SingleAgentSolver*>& search_engines,
   //   const vector<ConstraintTable>& constraints,
   //     vector<Path>& paths_found_initially, heuristics_type heuristic, int screen);

@@ -13,8 +13,6 @@ Instance::Instance(const string& map_fname, const string& agent_fname, const str
 				   int num_of_agents, int num_of_rows, int num_of_cols, int num_of_obstacles, int warehouse_width) :
 		map_fname(map_fname), agent_fname(agent_fname), num_of_agents(num_of_agents), assignment_folder(assignment_folder)
 {
-
-
 	struct stat info;
 	if (stat(assignment_folder.c_str(), &info) == 0 && (info.st_mode & S_IFDIR)){
 		ddmapd_instance = true;
@@ -75,89 +73,58 @@ bool Instance::loadAgentsJson(){
 		folder += '/';
 	}
 	// read agent sequence and segment info
-	std::string agent_seq_path = folder + "agent_seq.json";
-	std::ifstream agent_seq_file(agent_seq_path);
-	if (!agent_seq_file.is_open())
+	std::string agent_locs_path = folder + "agent_locs.json";
+	std::string vertex_info_path = folder + "vertex_info.json";
+
+
+	std::ifstream agent_locs_file(agent_locs_path);
+	if (!agent_locs_file.is_open())
 	{
-		std::cerr << "Agent sequence file " << agent_seq_path << " not found." << std::endl;
+		std::cerr << "Agent sequence file " << agent_locs_path << " not found." << std::endl;
 		return false;
 	}
 
-	std::string segment_info_path = folder + "segment_info.json";
-	std::ifstream segment_info_file(segment_info_path);
-	if (!segment_info_file.is_open())
+	std::ifstream vertex_info_file(vertex_info_path);
+	if (!vertex_info_file.is_open())
 	{
-		std::cerr << "Segment info file " << segment_info_path << " not found." << std::endl;
+		std::cerr << "Segment info file " << vertex_info_path << " not found." << std::endl;
 		return false;
 	}
-	json agent_seq_json = json::parse(agent_seq_file);
-	json segment_info_json = json::parse(segment_info_file);
+	// json agent_seq_js
+	json agent_locs_json = json::parse(agent_locs_file);
+	json vertex_info_json = json::parse(vertex_info_file);
 
-	num_of_agents = agent_seq_json.size();
+	num_of_agents = agent_locs_json.size();
 	// Initialize segments
-	segments.resize(segment_info_json.size());
-	dependency_graph.resize(segment_info_json.size());
-	for (auto [key, value] : segment_info_json.items()){
-        
-		int segment_id = value["segment_id"];
-		int traj_start_timestep = value["traj_start_timestep"];
-		int traj_end_timestep = value["traj_end_timestep"];
-		int agent = value["agent"];
-		vector<int> trajectory;
-		for (auto& loc : value["trajectory"]) {
-			trajectory.emplace_back(linearizeCoordinate(loc[0], loc[1]));
-		}
-		vector<int> dep_seqPos = value["dep_agent_seqPos"];
-		vector<int> dep_agent = value["dep_agent_seq"];
-		vector<int> dependencies = value["dependencies"];
-		vector<int> parents = value["parents"];
-		int taskID = value["task_ID"];
-		int seq_pos = value["seq_pos"];
-		dependency_graph[segment_id] = dependencies;
-		segments[segment_id] = Segment(seq_pos, segment_id, taskID, traj_start_timestep, traj_end_timestep, agent, dep_seqPos, dep_agent, trajectory, dependencies, parents);
-	}
+	vertices.resize(vertex_info_json.size());
+	agent_parkLoc.resize(num_of_agents);
 
-	// Initialize agent & goals precedence constraints
-	agent_Parking.resize(num_of_agents); // num_of_agents * map_size
-	start_locations.resize(num_of_agents); // start_locations[i] is the start location for agent i
-	goal_locations.resize(num_of_agents); // goal_locations[i] is the list of goal locations for agent i; goal_locations[i][j] the location for goal_ids[i][j]
-	goal_segmentIDs.resize(num_of_agents); // goal_segmentIDs[i] is the list of segment IDs for agent i;
-
-
-	for (auto [key, value] : agent_seq_json.items())
-	{
-		int to_agent = std::stoi(key);
-		start_locations[to_agent] = linearizeCoordinate(value["start_loc"][0], value["start_loc"][1]);
-		goal_locations[to_agent].resize(value["seq"].size()); 
-		goal_segmentIDs[to_agent].resize(value["seq"].size()); 
-		for (int seq_index = 0; seq_index < value["seq"].size(); seq_index++)
-		{
-			int to_landmark_seqID = value["seq"][seq_index];
-			goal_locations[to_agent][seq_index] = segments[to_landmark_seqID].trajectory[0];
-			goal_segmentIDs[to_agent][seq_index] = to_landmark_seqID;
-			if (seq_index >= 1)
-			{
-				int from_segment_ID = value["seq"][seq_index - 1];
-				int to_segment_ID = value["seq"][seq_index];
-				// if from_segment_ID no in dependencies of to_segment_ID, add it
-				if (std::find(dependency_graph[to_segment_ID].begin(), dependency_graph[to_segment_ID].end(), from_segment_ID) == dependency_graph[to_segment_ID].end()){
-					dependency_graph[to_segment_ID].push_back(from_segment_ID);
-					segments[from_segment_ID].parents.push_back(to_segment_ID);
-				}
-			}
-
-		}
-
+	// get agent start_loc
+    for (json::iterator it = agent_locs_json.begin(); it != agent_locs_json.end(); ++it) {
+        int agent = std::stoi(it.key());
+        vector<int> loc = it.value();
+		int linear_loc = linearizeCoordinate(loc[0], loc[1]);
+		agent_parkLoc[agent] = linear_loc;
     }
-	for (int cur_agent = 0; cur_agent < num_of_agents; cur_agent++){
-		agent_Parking[cur_agent].resize(map_size, false);
-		for (int other_agent = 0; other_agent < num_of_agents; other_agent++){
-			if (cur_agent == other_agent){
-				continue;
-			}
-			agent_Parking[cur_agent][start_locations[other_agent]] = true;
-		}
+
+
+	// get segment info
+	for (auto [key, value] : vertex_info_json.items())
+	{
+		int id = std::stoi(key);
+		vector<int> locs = value["loc"];
+		int loc = linearizeCoordinate(locs[0], locs[1]);
+		int traj_len = value["traj_len"];
+		int taskID = value["taskID"];
+		int traj_step = value["traj_step"];
+		vector<int> type1_idList = value["type1_id"];
+		vector<int> type2_idList = value["type2_id"];
+		vertices[id] = Vertex(id, loc, traj_len, taskID, traj_step, type1_idList, type2_idList);
+		taskStep2id[std::make_tuple(taskID, traj_step)] = id;
 	}
+
+	// assert len(myMap) == num_of_agents
+//	assert(taskStep2id.size() == vertices, "Number of agents does not match the number of agents in the agent sequence file.");
 
 	return true;
 }

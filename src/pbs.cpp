@@ -4,7 +4,7 @@
 */
 #include <boost/program_options.hpp>
 #include <boost/tokenizer.hpp>
-#include "PBS.h"
+#include "SWI.h"
 
 /* Declare some static utility functions */
 static void usage();
@@ -67,27 +67,15 @@ int main(int argc, char** argv)
 	
 	//////////////////////////////////////////////////////////////////////
 	// initialize the solver
-	PBS pbs(instance, vm["screen"].as<int>());
-	pbs.dummy_avoid = vm["dummy_avoid"].as<bool>();
-	pbs.set_heuristic(vm["heuristic"].as<int>());
+	SWI swi(instance, vm["screen"].as<int>());
 	//////////////////////////////////////////////////////////////////////
 	// run
 	double runtime = 0;
 	int min_f_val = 0;
 	for (int i = 0; i < runs; i++)
 	{
-		pbs.clear();
-		pbs.solve(vm["cutoffTime"].as<double>(), min_f_val);
-		runtime += pbs.runtime;
-		if (pbs.solution_found)
-			break;
-		min_f_val = (int) pbs.min_f_val;
-		pbs.randomRoot = true;
+		swi.Run_main();
 	}
-	pbs.runtime = runtime;
-	if (vm.count("output"))
-		pbs.saveResults(vm["output"].as<string>(), vm["agents"].as<string>());
-  pbs.clearSearchEngines();
 
 	return 0;
 

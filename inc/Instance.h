@@ -4,6 +4,31 @@
 
 typedef std::pair<int, int> event;
 
+            // "id": info["id"],
+            // "loc": info["loc"],
+            // "type1": [info["type1"]],
+            // "type2": info["type2"],
+            // "type1_id": [tuple_to_id[info["type1"][0]]] if info["type1"] else [],
+            // "type2_id": [tuple_to_id[i] for i in info["type2"]],
+            // "traj_len": info["traj_len"],
+            // "taskID": taskID,
+            // "traj_step": traj_step,
+
+
+struct Vertex
+{
+	int id;
+	int loc;
+	int traj_len;
+	int taskID;
+	int traj_step;
+	vector<int> type1_idList;
+	vector<int> type2_idList;
+	Vertex(int id, int loc, int traj_len, int taskID, int traj_step, vector<int> type1_idList, vector<int> type2_idList) : id(id), loc(loc), traj_len(traj_len), taskID(taskID), traj_step(traj_step), type1_idList(type1_idList), type2_idList(type2_idList) {}
+	Vertex() {}
+
+};
+
 struct Segment
 {
 	int id;
@@ -36,11 +61,20 @@ struct Segment
 class Instance
 {
 public:
+
+	// Switchable dd-mapd
+
 	int num_of_cols;
 	int num_of_rows;
 	int map_size;
+	vector<Vertex> vertices;
+	vector<int> agent_parkLoc;
+	std::map<std::tuple<int, int>, int> taskStep2id;
+
+
 	int num_of_segments;
 	bool ddmapd_instance = false;
+	
 	vector<vector<int>> goal_segmentIDs;
 	vector<Segment> segments;
 	vector<int> start_locations;
