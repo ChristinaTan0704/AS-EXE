@@ -16,6 +16,7 @@ public:
     // agent variables
     vector<int> agent_parkLoc;
     vector<int> agent_currLoc;
+    vector<int> agent_nextVertex;
     vector<int> agent_currVertex;
     vector<int> agent_preVertex;
     vector<vector<std::tuple<int, int, int, int>>> agent_paths; // location, taskID/shelfID, shelf_step, vertexID
@@ -30,15 +31,15 @@ public:
     int num_of_vertices;
     Instance instance;
     bool Run_main();
-    
-    
+
 
 
     SWI(const Instance& instance, int screen);
     ~SWI();
 
-private:
 
+private:
+    int switch_cost = 0;
     int path_planner = 0; // (0) estimate without collision
     void Plan_path_to_loc(int agent, int curr_loc, int target_loc, int vertex_ID); // update agent_paths and agent_currLoc
 
@@ -49,5 +50,8 @@ private:
     void Update_agent_movable();
     void Move_all_agents();
     void Print_agent_paths();
+    bool Pass_all_vertex(){
+        return std::none_of(curr_in_degree.begin(), curr_in_degree.end(), [](int degree) { return degree > 0; });
+    };
 
 };
