@@ -31,14 +31,20 @@ public:
         toFrom[to].insert(from);
     }
 
-    bool inGraph(int node) {
+
+    bool NodeInGraph(int node) {
         return fromTo.find(node) != fromTo.end() || toFrom.find(node) != toFrom.end();
+    }
+
+    bool EdgeInGraph(int from, int to) {
+        return fromTo.find(from) != fromTo.end() && fromTo[from].find(to) != fromTo[from].end() ; // don't need to check toFrom
     }
 
     // Remove a node by its ID
     bool removeNode(int node) {
         // Check if the node exists
         if (fromTo.find(node) == fromTo.end() && toFrom.find(node) == toFrom.end()) {
+            cout << "removeNode Error: " << node << " not in the graph fromTo.find(node) == fromTo.end() && toFrom.find(node) == toFrom.end()" << endl;
             return false;
         }
 
@@ -76,6 +82,7 @@ public:
         for (const auto& pair : toFrom){
             in_degree[pair.first] = pair.second.size();
         }
+        return;
     }
 
     // Remove an edge from 'from' to 'to'
@@ -139,7 +146,7 @@ public:
     void check_graph(std::vector<int> &in_degree){
         for (const auto& pair : toFrom){
             if (pair.second.size() != in_degree[pair.first]){
-                std::cout << "Error: in_degree " << in_degree[pair.first] << " toFrom " << pair.second.size() << std::endl;
+                std::cout << "Error: " << pair.first << " in_degree " << in_degree[pair.first] << " toFrom size " << pair.second.size() << std::endl;
             }
 
             for (int one_from : pair.second){
@@ -172,6 +179,8 @@ public:
                     std::cout << std::endl;}
             }
         }
+        cout << "check_graph() : check done" << endl;
+        return;
         
     }
 
