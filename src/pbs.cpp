@@ -19,6 +19,8 @@ int main(int argc, char** argv)
 		("help", "produce help message")
 		("heuristic", po::value<int>()->default_value(1), "(1) random (2) cost (3) makespan (4) number of dependencies")
 		("dummy_avoid", po::value<bool>()->default_value(false), "whether to let dummy path avoid segment trajectory, only used in DD-MAPD instance")
+		("switchable", po::value<bool>()->default_value(false), "")
+		("simu", po::value<bool>()->default_value(false), "")
 		("assignment_folder,f", po::value<string>()->default_value(""), "path to folder that contains the assignment files")
 		// params for the input instance and experiment settings
 		("map,m", po::value<string>()->default_value(""), "input file for map")
@@ -69,7 +71,9 @@ int main(int argc, char** argv)
 	// initialize the solver
 	SWI swi(instance, vm["screen"].as<int>());
 	//////////////////////////////////////////////////////////////////////
-	// run
+	// run 
+	swi.SWITCH = vm["switchable"].as<bool>();
+	swi.SIMULATE = vm["simu"].as<bool>();
 	double runtime = 0;
 	int min_f_val = 0;
 	for (int i = 0; i < runs; i++)

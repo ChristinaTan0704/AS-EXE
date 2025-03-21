@@ -109,6 +109,38 @@ public:
 		int loc2_y = getColCoordinate(loc2);
 		return abs(loc1_x - loc2_x) + abs(loc1_y - loc2_y);
 	}
+	
+	// get the shortest estimate path exclude the current location (loc1) and include the target location (loc2)
+	vector<int> getManhattanPath(int loc1, int loc2){
+		int loc1_x = getRowCoordinate(loc1);
+		int loc1_y = getColCoordinate(loc1);
+		int loc2_x = getRowCoordinate(loc2);
+		int loc2_y = getColCoordinate(loc2);
+
+		vector<int> path;
+		while (loc1_x != loc2_x){
+			if (loc1_x < loc2_x){
+				path.push_back(linearizeCoordinate(loc1_x + 1, loc1_y));
+				loc1_x ++;
+			}
+			else{
+				path.push_back(linearizeCoordinate(loc1_x - 1, loc1_y));
+				loc1_x --;
+			}
+		}
+		while (loc1_y != loc2_y){
+			if (loc1_y < loc2_y){
+				path.push_back(linearizeCoordinate(loc1_x, loc1_y + 1));
+				loc1_y ++;
+			}
+			else{
+				path.push_back(linearizeCoordinate(loc1_x, loc1_y - 1));
+				loc1_y --;
+			}
+		}
+		return path;
+
+	}
 
 	inline int getManhattanDistance(const pair<int, int> &loc1, const pair<int, int> &loc2) const
 	{

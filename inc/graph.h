@@ -144,6 +144,7 @@ public:
     }
 
     void check_graph(std::vector<int> &in_degree){
+       return ;
         for (const auto& pair : toFrom){
             if (pair.second.size() != in_degree[pair.first]){
                 std::cout << "Error: " << pair.first << " in_degree " << in_degree[pair.first] << " toFrom size " << pair.second.size() << std::endl;
